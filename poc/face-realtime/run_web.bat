@@ -1,5 +1,7 @@
 @echo off
 chcp 65001 >nul
+rem 한글 Windows(cp949)에서 pip가 requirements.txt의 한글 주석을 못 읽는 문제 방지
+set PYTHONUTF8=1
 rem 6단계 웹 화면 한 번에 실행: Python 확인 -> 가상환경 -> 패키지 설치 -> 서버 실행
 rem 사용: 더블클릭, 또는 run_web.bat --no-mic
 cd /d "%~dp0"

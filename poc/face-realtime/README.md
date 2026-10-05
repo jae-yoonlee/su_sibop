@@ -271,6 +271,10 @@ python step5_coaching.py --log     :: results/step5_feedback.csv, step5_setup.js
 
 ## 6단계: 브라우저 화면 (localhost)
 
+**가장 쉬운 방법 (Windows):** `poc\face-realtime\run_web.bat`을 더블클릭합니다. Python이 없으면 설치하고, 가상환경과 패키지를 준비한 뒤 서버를 켜고 브라우저를 엽니다. Python을 처음 설치했다면 창을 닫고 한 번 더 실행하세요.
+
+직접 실행할 때:
+
 ```bat
 python web_server.py               :: http://127.0.0.1:8000 이 자동으로 열림
 python web_server.py --no-mic      :: 마이크 없이

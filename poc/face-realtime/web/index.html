@@ -12,25 +12,26 @@
     <div class="pills">
       <span id="pill-camera" class="pill">카메라 준비 중</span>
       <span id="pill-mic" class="pill">마이크 확인 중</span>
-      <span class="pill quiet">이 PC 안에서만 분석</span>
+      <span class="pill quiet">영상은 이 컴퓨터 밖으로 나가지 않아요</span>
     </div>
   </header>
 
   <main class="layout">
     <section class="stage">
-      <div class="video-wrap">
+      <div id="video-wrap" class="video-wrap">
         <img id="video" src="/video.mjpg" alt="웹캠 화면">
         <div id="loading" class="loading">카메라를 여는 중입니다</div>
         <div id="question-banner" class="question-banner" hidden></div>
         <div id="setup-msg" class="setup-msg" hidden></div>
-        <div id="cards" class="cards"></div>
+        <div id="alert" class="alert" hidden>
+          <div class="alert-title"><span class="alert-icon">!</span><span id="alert-title"></span></div>
+          <div id="alert-detail" class="alert-detail"></div>
+        </div>
       </div>
-      <div class="meter">
-        <div><span class="label">좌우</span><span id="m-yaw">-</span></div>
-        <div><span class="label">위아래</span><span id="m-pitch">-</span></div>
-        <div><span class="label">목소리</span><span id="m-voice">-</span></div>
-        <div><span class="label">대기 중 알림</span><span id="m-pending">-</span></div>
-        <div><span class="label">처리 속도</span><span id="m-fps">-</span></div>
+      <div class="status">
+        <div id="s-face" class="chip"><span class="label">얼굴 방향</span><b id="s-face-text">-</b></div>
+        <div id="s-voice" class="chip"><span class="label">목소리</span><b id="s-voice-text">-</b></div>
+        <div id="s-wait" class="chip"><span class="label">알림</span><b id="s-wait-text">-</b></div>
       </div>
     </section>
 
@@ -38,18 +39,18 @@
       <!-- 1. 카메라 설정 -->
       <div id="view-setup" class="view" hidden>
         <h2>카메라 맞추기</h2>
-        <p class="lead">시작 전에 카메라 위치와 눈높이를 맞춥니다. 화면을 보는 평소 자세를 정면으로 잡아서, 화면만 봐도 고개를 숙인 것으로 잡히지 않게 합니다.</p>
+        <p class="lead">시작하기 전에 자리를 잡아요. 화면 아래 파란 안내를 따라 해 주세요.</p>
         <ol class="steps">
-          <li data-step="position"><b>위치</b><span>얼굴이 가운데에 적당한 크기로</span></li>
-          <li data-step="lens"><b>렌즈 보기</b><span>카메라 렌즈를 2초</span></li>
-          <li data-step="screen"><b>화면 보기</b><span>화면 가운데를 2초</span></li>
+          <li data-step="position"><b>1. 자리 잡기</b><span>얼굴이 화면 가운데 오게 앉아요</span></li>
+          <li data-step="lens"><b>2. 카메라 보기</b><span>카메라 렌즈를 2초 바라봐요</span></li>
+          <li data-step="screen"><b>3. 화면 보기</b><span>화면 가운데를 2초 바라봐요</span></li>
         </ol>
-        <button id="btn-skip" class="ghost">위치 맞추기 건너뛰기</button>
+        <button id="btn-skip" class="ghost">자리 잡기 건너뛰기</button>
       </div>
 
       <!-- 2. 질문 고르기 -->
       <div id="view-ready" class="view" hidden>
-        <h2>질문 고르기</h2>
+        <h2>질문을 골라 주세요</h2>
         <div id="setup-warnings" class="notes"></div>
         <ul id="questions" class="questions"></ul>
         <label class="custom">
@@ -62,11 +63,11 @@
 
       <!-- 3. 연습 중 -->
       <div id="view-practice" class="view" hidden>
-        <h2>연습 중</h2>
+        <h2>답변해 주세요</h2>
         <p id="practice-q" class="practice-q"></p>
         <div class="timer" id="timer">0:00</div>
-        <p class="lead">알림은 말을 잠깐 멈췄을 때만 뜹니다. 말하는 동안 생긴 알림은 기다렸다가 쉬는 순간에 하나만 보여 줍니다.</p>
-        <button id="btn-stop" class="primary">연습 끝내기</button>
+        <p class="lead">말하는 중에는 방해하지 않아요. 잠깐 숨을 고를 때 고칠 점을 하나씩 알려 드려요.</p>
+        <button id="btn-stop" class="primary">답변 끝내기</button>
       </div>
 
       <!-- 4. 결과 -->
@@ -74,15 +75,14 @@
         <h2>연습 결과</h2>
         <p id="r-question" class="practice-q"></p>
         <div class="stats">
-          <div><span class="label">답변 길이</span><b id="r-duration">-</b></div>
-          <div><span class="label">보여 준 알림</span><b id="r-shown">-</b></div>
-          <div><span class="label">리포트로 넘긴 알림</span><b id="r-held">-</b></div>
+          <div><span class="label">답변 시간</span><b id="r-duration">-</b></div>
+          <div><span class="label">알려 드린 횟수</span><b id="r-shown">-</b></div>
         </div>
-        <h3>자세가 벗어난 시간</h3>
+        <h3>자세가 흐트러진 시간</h3>
         <div id="r-chart" class="chart"></div>
         <h3>알림 기록</h3>
         <table class="log">
-          <thead><tr><th>시각</th><th>알림</th><th>결과</th></tr></thead>
+          <thead><tr><th>시간</th><th>내용</th><th>어떻게 됐나</th></tr></thead>
           <tbody id="r-log"></tbody>
         </table>
         <div id="r-setup" class="notes"></div>

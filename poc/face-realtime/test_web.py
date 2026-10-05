@@ -52,6 +52,32 @@ def test_setup_then_practice_shows_card_in_pause():
     assert state["question"] == "자기소개"
 
 
+def test_card_has_plain_title_and_posture():
+    f = Feeder(no_audio=True)
+    finish_setup(f)
+    assert f.run(0.2)["posture"] == "좋아요"
+    f.s.start(f.t)
+    state = f.run(2.5, yaw=30)
+    assert state["posture"] == "옆을 보고 있어요"
+    assert state["cards"][0]["title"] == "정면을 봐 주세요!"
+    assert state["cards"][0]["detail"]
+
+
+def test_extra_alert_from_voice_side():
+    """음성 쪽이 넣는 '말이 너무 빠릅니다!'도 같은 규칙(쉴 때만)으로 뜬다"""
+    f = Feeder()
+    finish_setup(f)
+    f.s.start(f.t)
+    for _ in range(round(2 * FPS)):
+        f.t += DT
+        f.s.feed(f.t, {"yaw": 0, "pitch": 0, "roll": 0, "blink_l": 0, "blink_r": 0}, GOOD_BOX, True, ["fast"])
+    assert f.s.state(f.t)["cards"] == []
+    for _ in range(round(0.8 * FPS)):
+        f.t += DT
+        f.s.feed(f.t, {"yaw": 0, "pitch": 0, "roll": 0, "blink_l": 0, "blink_r": 0}, GOOD_BOX, False, ["fast"])
+    assert f.s.state(f.t)["cards"][0]["title"] == "말이 너무 빠릅니다!"
+
+
 def test_no_cards_before_practice_starts():
     f = Feeder(no_audio=True)
     finish_setup(f)

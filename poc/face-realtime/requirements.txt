@@ -4,3 +4,4 @@ google-genai>=1.0
 python-dotenv>=1.0
 pillow>=10.1
 pytest>=8.0
+sounddevice>=0.4      # 5단계 마이크 음량 감지 (없으면 음성 없이 동작)

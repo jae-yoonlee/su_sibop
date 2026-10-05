@@ -15,17 +15,6 @@ from feedback_gate import FeedbackGate
 from step3_coaching import ALERTS, CoachRules
 
 COACH_ALERTS = {k: v for k, v in ALERTS.items() if k != "blink"}  # 깜빡임은 기록만 (step5와 같음)
-
-# 화면에 크게 띄울 경고 문구: (제목, 한 줄 설명). 일반 사용자가 바로 알아듣는 말로 쓴다.
-# fast·fact는 음성 기능(말 속도, 자소서 대조)이 생기면 feed(extra_active=[...])로 넣는다.
-ALERT_TEXT = {
-    "away": ("화면 안으로 들어와 주세요!", "얼굴이 카메라에 보이지 않아요"),
-    "turn": ("정면을 봐 주세요!", "고개가 옆으로 2초 넘게 돌아가 있어요"),
-    "down": ("고개를 들어 주세요!", "고개가 아래로 2초 넘게 숙여져 있어요"),
-    "fast": ("말이 너무 빠릅니다!", "조금 천천히, 또박또박 말해 보세요"),
-    "fact": ("내용에 오류가 있습니다!", "자소서에 적은 내용과 다르게 말했어요"),
-}
-POSTURE_TEXT = {"ok": "좋아요", "turn": "옆을 보고 있어요", "down": "고개가 숙여졌어요", "away": "얼굴이 안 보여요"}
 JPEG_QUALITY = 75
 
 
@@ -81,9 +70,8 @@ class CoachSession:
         self.last_report = self.report()
         return self.last_report
 
-    def feed(self, t, info, box, speaking, extra_active=()):
-        """한 프레임 처리. info: analyze() 결과(없으면 None), box: face_box() 결과.
-        extra_active: 얼굴 규칙 밖에서 켜진 경고 이름 (예: 음성 쪽의 "fast", "fact")."""
+    def feed(self, t, info, box, speaking):
+        """한 프레임 처리. info: analyze() 결과(없으면 None), box: face_box() 결과."""
         self.speaking = speaking
         if self.setup.active:
             self.setup.feed(t, info, box)
@@ -91,7 +79,6 @@ class CoachSession:
             return
         self.angles = self.setup.apply(info) if info else None
         active = [k for k in self.rules.update(t, self.angles, info) if k != "blink"]
-        active += [k for k in extra_active if k in ALERT_TEXT and k not in active]
         if self.practicing:
             self.shown = self.gate.update(t, active, speaking)
 
@@ -109,23 +96,14 @@ class CoachSession:
         return {
             "question": self.question,
             "duration_s": round(end - start, 1) if start is not None and end is not None else 0.0,
-            "cards": [dict(name=k, label=ALERT_TEXT.get(k, (k,))[0], **v) for k, v in cards.items()],
-            "held_s": [{"name": k, "label": ALERT_TEXT[k][0], "seconds": v} for k, v in held.items()],
+            "cards": [dict(name=k, label=COACH_ALERTS.get(k, k), **v) for k, v in cards.items()],
+            "held_s": [{"name": k, "label": COACH_ALERTS[k], "seconds": v} for k, v in held.items()],
             "total_blinks": self.rules.total_blinks,
             "setup": self.setup.summary(),
             "log": [{"t": round(t - start, 2), "name": n, "outcome": o, "reason": r}
                     for t, n, o, r in self.gate.log],
             "no_audio": self.no_audio,
         }
-
-    def posture(self):
-        """지금 얼굴 상태 (경고 전 단계 포함: 조건이 막 시작돼도 바로 보여 준다)"""
-        if self.setup.active:
-            return "ok"
-        for k in ("away", "turn", "down"):
-            if self.rules.held.get(k, 0) > 0:
-                return k
-        return "ok"
 
     def state(self, t):
         """브라우저로 보낼 현재 상태"""
@@ -138,8 +116,7 @@ class CoachSession:
                 "message": MESSAGES[self.setup.message],
                 "warnings": [MESSAGES[w] for w in self.setup.warnings],
             },
-            "cards": [{"name": k, "title": ALERT_TEXT[k][0], "detail": ALERT_TEXT[k][1]} for k in self.shown],
-            "posture": POSTURE_TEXT[self.posture()],
+            "cards": [{"name": k, "label": COACH_ALERTS[k]} for k in self.shown],
             "pending": list(self.gate.pending) if self.practicing else [],
             "elapsed_s": round(t - self.started_at, 1) if self.practicing else None,
             "question": self.question,

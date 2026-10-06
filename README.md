@@ -52,12 +52,15 @@ poc/face-realtime/
     step4_benchmark.py        FPS·처리 시간 측정
   [음성]
     speech_state.py      말하는 중인지 (지금은 음량, Silero VAD로 교체 예정)
-    voice_rules.py       침묵(4초)·작은 목소리 규칙
+    voice_rules.py       침묵(4초)·작은 목소리·너무 빠름 규칙
+    speech_rate.py       발화속도 (글자 변환 없이 음절 봉우리를 세어 분당 음절 수)
+    filler_detect.py     소리 기반 군말 (길게 끄는 "음—", "어—")
     feedback_gate.py     알림 간격 (20초, 같은 종류 45초, 1분 최대 2개)
   [자소서]
     question_gen.py      자소서 → 맞춤 질문 3개 (Gemini 또는 EXAONE)
     followup_gen.py      답변 → 꼬리질문 1개 (규칙 + EXAONE, 매번 다르게)
   eval_events.py         평가 계산 (맞힌 횟수·헛경고·지연)
+  eval_recorder.py, eval_report.py   평가용 녹화(영상·음성·정답)와 채점. 화면은 /eval.html
   test_*.py              테스트 (웹캠·마이크·AI 없이 실행)
   results/               측정 결과와 캡처
 data/
@@ -79,7 +82,7 @@ cd poc\face-realtime
 pytest -q
 ```
 
-웹캠·마이크·AI 없이 115개 테스트가 돌아갑니다.
+웹캠·마이크·AI 없이 127개 테스트가 돌아갑니다.
 
 ## 진행 상황 (4주차)
 
@@ -88,4 +91,5 @@ pytest -q
 | 고개 방향 판정·경고 화면 | 완료 |
 | 자소서 맞춤 질문 3개 | 완료 |
 | 침묵·작은 목소리 규칙, 꼬리질문, 평가 계산 | 코드와 테스트만 (화면 연결 전) |
-| 눈동자 시선, 발화속도, 군말 | 예정 |
+| 발화속도, 소리 기반 군말, 눈동자 방향 값 | 값만 화면에 표시. 경고와 사람 대상 정확도 측정은 아직 |
+| 정확도·지연 평가 도구 (/eval.html) | 도구는 있음. 사람 측정은 아직 ([사용법](poc/face-realtime/README.md#8단계-정확도지연-평가)) |

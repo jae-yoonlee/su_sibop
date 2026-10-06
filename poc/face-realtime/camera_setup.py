@@ -109,6 +109,7 @@ class CameraSetup:
         self.window = SteadyWindow()
         self.lens = None          # 렌즈를 볼 때 평균 각도 (카메라 기준)
         self.baseline = None      # 화면을 볼 때 평균 각도 → 정면(0°)
+        self.base_cx = None       # 화면을 볼 때 얼굴 중심의 가로 위치 (몸이 옆으로 치우쳤는지 판정용)
         self.warnings = []        # 끝난 뒤에도 보여줄 안내 (카메라 높이 등)
         self.message = "no_face"  # 화면에 띄울 안내 (MESSAGES의 키)
 
@@ -163,6 +164,7 @@ class CameraSetup:
                 self.window.reset()
                 return
             self.baseline = mean
+            self.base_cx = box["cx"] if box else None
             self.warnings = self.diagnose()
             self._go("done")
             self.message = "done"

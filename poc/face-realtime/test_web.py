@@ -18,11 +18,11 @@ class Feeder:
     def __init__(self, **kw):
         self.s, self.t = CoachSession(**kw), 0.0
 
-    def run(self, sec, yaw=0.0, pitch=0.0, face=True, speaking=None):
+    def run(self, sec, yaw=0.0, pitch=0.0, face=True, speaking=None, cx=0.5):
         for _ in range(round(sec * FPS)):
             self.t += DT
             info = {"yaw": yaw, "pitch": pitch, "roll": 0.0, "blink_l": 0.0, "blink_r": 0.0} if face else None
-            self.s.feed(self.t, info, GOOD_BOX if face else None, speaking)
+            self.s.feed(self.t, info, dict(GOOD_BOX, cx=cx) if face else None, speaking)
         return self.s.state(self.t)
 
 
@@ -50,6 +50,14 @@ def test_setup_then_practice_shows_card_in_pause():
     state = f.run(0.8, yaw=30, speaking=False)         # 쉬는 순간에 표시
     assert [c["name"] for c in state["cards"]] == ["turn"]
     assert state["question"] == "자기소개"
+
+
+def test_body_shift_is_not_reported_as_head_turn():
+    """몸을 옆으로 옮기면 고개를 안 돌려도 yaw가 커진다 → '정면을 보세요'가 아니라 '가운데로'"""
+    f = Feeder()
+    finish_setup(f)
+    assert f.run(3, yaw=30, cx=0.7)["active"] == ["shift"]
+    assert f.run(3, yaw=30)["active"] == ["turn"]
 
 
 def test_no_cards_before_practice_starts():

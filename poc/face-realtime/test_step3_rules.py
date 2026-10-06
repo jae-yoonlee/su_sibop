@@ -55,6 +55,14 @@ def test_turn_timer_resets_when_back_to_front():
     assert "turn" not in f.run(1.5, yaw=25)
 
 
+def test_turn_timer_survives_short_face_dropout():
+    """크게 돌리면 얼굴 인식이 잠깐 끊긴다. 그때마다 2초를 처음부터 다시 재지 않는다."""
+    f = Feeder()
+    f.run(1.5, yaw=25)
+    f.run(0.2, face=False)
+    assert "turn" in f.run(0.4, yaw=25)
+
+
 # --- 고개 숙임 ---
 def test_head_down():
     f = Feeder()

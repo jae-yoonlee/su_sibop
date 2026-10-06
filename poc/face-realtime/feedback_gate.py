@@ -4,6 +4,7 @@ CoachRules가 "지금 조건에 걸린 경고"를 매 프레임 알려 주면, F
 무엇을 언제 화면에 보여줄지 정한다.
 
 - 말하는 중에는 새 경고를 띄우지 않고 '대기'시킨다.
+- 아직 한 번도 말하지 않았으면 끊을 말이 없으니 바로 띄운다.
 - 말을 멈춘 뒤 0.7~1.5초 사이(짧은 숨 고르기)에만 띄운다. 1.5초 넘게 조용하면 생각 중일 수 있어 새로 띄우지 않는다.
 - 대기 중에 상태가 풀리면(정면으로 돌아오면) 띄우지 않고 버린다.
 - 8초 안에 띄울 틈이 없으면 버리고 리포트에만 남긴다.
@@ -56,8 +57,10 @@ class FeedbackGate:
         """지금이 '짧게 숨 고르는 순간'인지"""
         if self.no_audio:
             return True
-        if self.speaking or self.silence_since is None:
+        if self.speaking:
             return False
+        if self.silence_since is None:
+            return True  # 아직 한 번도 말하지 않음: 끊을 말이 없으니 바로 띄움
         return PAUSE_MIN_SEC <= t - self.silence_since <= PAUSE_MAX_SEC
 
     def _blocked_reason(self, t):

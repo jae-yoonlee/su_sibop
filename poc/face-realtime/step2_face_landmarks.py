@@ -67,10 +67,13 @@ def analyze(result):
     """탐지 결과 → 각도·표정 점수 dict. 얼굴이 없으면 None."""
     if not result.face_landmarks:
         return None
-    yaw, pitch, roll = head_angles(result.facial_transformation_matrixes[0])
+    matrix = np.array(result.facial_transformation_matrixes[0])
+    yaw, pitch, roll = head_angles(matrix)
     s = {c.category_name: c.score for c in result.face_blendshapes[0]}
     return {
         "yaw": yaw, "pitch": pitch, "roll": roll,
+        # 카메라에서 얼굴을 향하는 방향(°): 얼굴이 화면 가운데에서 옆으로 벗어난 정도
+        "ray_yaw": math.degrees(math.atan2(matrix[0, 3], -matrix[2, 3])),
         "blink_l": s["eyeBlinkLeft"], "blink_r": s["eyeBlinkRight"],
         "smile": (s["mouthSmileLeft"] + s["mouthSmileRight"]) / 2,
     }

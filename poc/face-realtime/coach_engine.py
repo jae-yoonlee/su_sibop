@@ -12,9 +12,13 @@ import time
 
 from camera_setup import MESSAGES, CameraSetup
 from feedback_gate import FeedbackGate
-from step3_coaching import ALERTS, CoachRules
+from step3_coaching import ALERTS, HOLD_SEC, CoachRules
 
 COACH_ALERTS = {k: v for k, v in ALERTS.items() if k != "blink"}  # 깜빡임은 기록만 (step5와 같음)
+COACH_ALERTS["shift"] = "가운데로 앉아 주세요!"
+# ponytail: 몸이 옆으로 가면 고개를 안 돌려도 yaw가 돌아간 것처럼 나온다. 보정 계수를 재기 전까지는
+# 이만큼(화면 폭 비율) 벗어나면 yaw를 믿지 않고 '치우침'으로 안내한다. 실측 후 yaw 보정으로 바꿀 것.
+SHIFT_TOL = 0.12
 JPEG_QUALITY = 75
 
 
@@ -32,6 +36,8 @@ class CoachSession:
         self.ended_at = None
         self.shown = []
         self.angles = None
+        self.shift_since = None
+        self.active = []  # 지금 기준에 걸려 있는 자세 (카드 표시 여부와 무관, 화면의 '자세' 칸용)
         self.speaking = None
         self.last_report = None
 
@@ -73,12 +79,19 @@ class CoachSession:
     def feed(self, t, info, box, speaking):
         """한 프레임 처리. info: analyze() 결과(없으면 None), box: face_box() 결과."""
         self.speaking = speaking
+        self.debug = {"yaw_raw": info["yaw"], "ray_yaw": info.get("ray_yaw"), "cx": box["cx"]} if info and box else None
         if self.setup.active:
             self.setup.feed(t, info, box)
             self.angles = None
+            self.active = []
             return
         self.angles = self.setup.apply(info) if info else None
-        active = [k for k in self.rules.update(t, self.angles, info) if k != "blink"]
+        shifted = bool(box) and self.setup.base_cx is not None and abs(box["cx"] - self.setup.base_cx) > SHIFT_TOL
+        self.shift_since = (self.shift_since if self.shift_since is not None else t) if shifted else None
+        angles = dict(self.angles, yaw=0.0) if shifted else self.angles  # 치우친 동안의 yaw는 돌림으로 세지 않음
+        self.active = active = [k for k in self.rules.update(t, angles, info) if k != "blink"]
+        if shifted and t - self.shift_since >= HOLD_SEC:
+            active.append("shift")
         if self.practicing:
             self.shown = self.gate.update(t, active, speaking)
 
@@ -117,10 +130,12 @@ class CoachSession:
                 "warnings": [MESSAGES[w] for w in self.setup.warnings],
             },
             "cards": [{"name": k, "label": COACH_ALERTS[k]} for k in self.shown],
+            "active": list(self.active),
             "pending": list(self.gate.pending) if self.practicing else [],
             "elapsed_s": round(t - self.started_at, 1) if self.practicing else None,
             "question": self.question,
         }
+        out["debug"] = getattr(self, "debug", None)  # 임시: 좌우 이동 보정값 측정용
         if self.angles:
             out["angles"] = {k: round(v, 1) for k, v in self.angles.items()}
         return out

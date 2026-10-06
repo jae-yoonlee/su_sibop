@@ -25,6 +25,7 @@ from step2_face_landmarks import (ANGLES, RESULTS_DIR, analyze, create_landmarke
 YAW_LIMIT = 20.0        # 좌우로 이 각도(°) 이상 돌리면
 PITCH_LIMIT = 15.0      # 이 각도(°) 이상 숙이면
 HOLD_SEC = 2.0          # 위 상태(또는 얼굴 이탈)가 이 시간 이상 이어지면 경고
+FACE_GAP_SEC = 0.5      # 얼굴 인식이 이보다 짧게 끊기면 돌림·숙임 타이머를 그대로 둠 (크게 돌리면 인식이 자주 끊김)
 BLINK_CLOSE = 0.5       # 두 눈 평균 점수가 이 값 이상이면 '감음'
 BLINK_OPEN = 0.3        # 이 값 미만으로 내려가면 '뜸' (고개를 돌리면 뜬 눈도 0.2~0.28까지 올라감)
 BLINK_MAX_SEC = 0.5     # 이보다 오래 감으면 깜빡임이 아니라 '눈 감음' → 세지 않음
@@ -37,9 +38,9 @@ CALIB_MAX_PITCH = 25.0  # Pitch는 카메라 높이에 따라 원래 클 수 있
 CALIB_MAX_STD = 3.0     # 보정 중 각도가 이보다 흔들리면(표준편차 °) 다시 보정
 
 ALERTS = {
-    "away": "화면 안으로 들어와 주세요",
-    "turn": "정면을 보세요",
-    "down": "고개를 드세요",
+    "away": "얼굴이 안 보여요!",
+    "turn": "정면을 보세요!",
+    "down": "고개를 드세요!",
     "blink": "긴장 상태입니다 (깜빡임 과다)",
 }
 CALIB_MSG = "정면을 보고 잠시 기다려 주세요 (보정 중)"
@@ -104,8 +105,10 @@ class CoachRules:
         """다시 보정할 때 지속 시간 타이머를 초기화"""
         self.since.clear()
 
-    def _hold(self, name, cond, t):
-        """cond가 연속으로 참인 시간(초). 거짓이 되면 0부터 다시 잰다."""
+    def _hold(self, name, cond, t, keep=False):
+        """cond가 연속으로 참인 시간(초). 거짓이 되면 0부터 다시 잰다. keep이면 타이머를 건드리지 않는다."""
+        if keep:
+            return t - self.since[name] if name in self.since else 0.0
         if not cond:
             self.since.pop(name, None)
             return 0.0
@@ -127,10 +130,12 @@ class CoachRules:
     def update(self, t, angles, info):
         """한 프레임 판정. angles(보정된 각도)·info가 None이면 얼굴 없음."""
         face = angles is not None
+        away = self._hold("away", not face, t)
+        gap = not face and away < FACE_GAP_SEC  # 잠깐 끊긴 것: 돌림·숙임 타이머 유지
         self.held = {
-            "away": self._hold("away", not face, t),
-            "turn": self._hold("turn", face and abs(angles["yaw"]) >= YAW_LIMIT, t),
-            "down": self._hold("down", face and angles["pitch"] >= PITCH_LIMIT, t),
+            "away": away,
+            "turn": self._hold("turn", face and abs(angles["yaw"]) >= YAW_LIMIT, t, keep=gap),
+            "down": self._hold("down", face and angles["pitch"] >= PITCH_LIMIT, t, keep=gap),
         }
         if face:
             self._count_blink((info["blink_l"] + info["blink_r"]) / 2, t)

@@ -44,6 +44,11 @@ def test_card_appears_in_short_pause():
     assert f.run(0.2, active=["turn"], speaking=False) == ["turn"]  # 0.7초 지나면 표시
 
 
+def test_card_appears_when_never_spoken():
+    """한 번도 말하지 않았으면 끊을 말이 없으니 바로 띄운다"""
+    assert GateFeeder().run(0.1, active=["turn"], speaking=False) == ["turn"]
+
+
 def test_no_new_card_after_long_silence():
     """1.5초 넘게 조용하면 생각 중일 수 있어 새로 띄우지 않는다"""
     f = GateFeeder()

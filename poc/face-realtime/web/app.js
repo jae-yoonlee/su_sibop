@@ -1,11 +1,13 @@
 // 화면은 서버(Python)가 보내는 상태를 그리기만 한다. 판정은 전부 서버가 한다.
 const $ = (id) => document.getElementById(id);
-const OUTCOME = { shown: "보여 줌", report_only: "리포트로", dropped: "말하는 중 해결", suppressed: "같은 알림 반복" };
+const OUTCOME = { shown: "화면에 띄움", report_only: "안 띄우고 기록만", dropped: "스스로 고침", suppressed: "방금 알려서 생략" };
+const POSE = { away: "얼굴이 안 보여요", shift: "몸이 한쪽으로 치우쳤어요", turn: "옆을 보고 있어요", down: "고개가 숙여졌어요" };
 const STEP_ORDER = ["position", "lens", "screen"];
 
 let selectedQuestion = null;
 let report = null;      // 마지막 연습 결과 (결과 화면을 보는 중이면 값이 있음)
 let lastPhase = null;
+let lastCards = "";     // 같은 경고가 떠 있는 동안 다시 그리지 않게 (애니메이션이 계속 재시작됨)
 
 async function command(action, extra = {}) {
   const res = await fetch("/api/command", {
@@ -46,28 +48,31 @@ function renderState(s) {
   }
   $("loading").hidden = !s.error;
   $("loading").textContent = s.error || "";
-  setPill($("pill-camera"), s.error ? "카메라 오류" : `카메라 ${s.fps} fps`, s.error ? "warn" : "ok");
-  if (s.no_audio) setPill($("pill-mic"), "마이크 없음: 쿨다운만 적용", "warn");
-  else setPill($("pill-mic"), s.speaking == null ? "마이크 소음 측정 중" : "마이크 연결됨", s.speaking == null ? "" : "ok");
+  setPill($("pill-camera"), s.error ? "카메라 오류" : "카메라 연결됨", s.error ? "warn" : "ok");
+  if (s.no_audio) setPill($("pill-mic"), "마이크 없음", "warn");
+  else setPill($("pill-mic"), s.speaking == null ? "마이크 확인 중" : "마이크 연결됨", s.speaking == null ? "" : "ok");
 
-  // 아래 숫자 줄
-  $("m-yaw").textContent = s.angles ? `${s.angles.yaw > 0 ? "+" : ""}${s.angles.yaw}°` : "-";
-  $("m-pitch").textContent = s.angles ? `${s.angles.pitch > 0 ? "+" : ""}${s.angles.pitch}°` : "-";
+  // 영상 아래 상태 줄
+  const bad = Object.keys(POSE).find((k) => (s.active || []).includes(k));
+  $("m-pose").textContent = s.phase === "setup" ? "카메라 맞추는 중" : bad ? POSE[bad] : "좋아요";
+  $("tile-pose").classList.toggle("bad", !!bad);
   $("m-voice").textContent = s.no_audio ? "마이크 없음" : s.speaking == null ? "준비 중" : s.speaking ? "말하는 중" : "조용함";
-  $("m-pending").textContent = s.pending && s.pending.length ? `${s.pending.length}개` : "없음";
-  $("m-fps").textContent = `${s.fps} fps`;
 
   // 영상 위 안내
   $("setup-msg").hidden = s.phase !== "setup";
   if (s.phase === "setup") $("setup-msg").textContent = s.setup.message;
   $("question-banner").hidden = s.phase !== "practice" || !s.question;
   $("question-banner").textContent = s.question || "";
-  $("cards").innerHTML = "";
-  for (const c of s.cards || []) {
-    const el = document.createElement("div");
-    el.className = c.name === "away" ? "card status" : "card";
-    el.textContent = c.label;
-    $("cards").appendChild(el);
+  const cards = (s.cards || []).map((c) => c.label);
+  if (cards.join("|") !== lastCards) {
+    lastCards = cards.join("|");
+    $("cards").innerHTML = "";
+    for (const label of cards) {
+      const el = document.createElement("div");
+      el.className = "card";
+      el.textContent = label;
+      $("cards").appendChild(el);
+    }
   }
 
   // 오른쪽 패널
@@ -163,8 +168,7 @@ function renderReport(r) {
   const notes = $("r-setup");
   notes.innerHTML = "";
   const tips = [];
-  if (r.no_audio) tips.push("마이크 없이 연습해서 쉬는 순간을 알 수 없었습니다. 알림은 간격 규칙만 적용했습니다.");
-  tips.push("깜빡임 횟수는 말하기만 해도 늘어나서 긴장 판정에 쓰지 않습니다.");
+  if (r.no_audio) tips.push("마이크 없이 연습해서 말을 멈춘 순간을 알 수 없었습니다. 경고는 일정 간격으로만 띄웠습니다.");
   for (const t of tips) {
     const el = document.createElement("div");
     el.className = "note";

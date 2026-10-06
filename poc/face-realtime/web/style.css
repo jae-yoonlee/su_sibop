@@ -71,7 +71,7 @@ button, input { font: inherit; }
 @keyframes pop { from { transform: scale(0.94); opacity: 0; } to { transform: none; opacity: 1; } }
 
 .meter {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px;
   font-variant-numeric: tabular-nums;
 }
 .meter div {

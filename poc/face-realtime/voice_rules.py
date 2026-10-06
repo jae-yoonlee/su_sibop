@@ -10,6 +10,9 @@
   내 기준 = 이번 연습에서 처음 말한 8초의 음량 중앙값. 최근 10초 동안 말한 구간의 중앙값이
   기준보다 6dB 낮은 상태가 5초 이어지면 켠다 (작아진 뒤 약 10초). 기준 -4dB까지 회복해야 끈다 (켜고 끄는 기준을 달리 둬 깜빡임 방지).
 
+- 말 빠름(fast): 최근 10초 말 속도(speech_rate.py, 분당 음절)가 400 이상이거나 내 기준보다 25% 이상 빠름.
+  내 기준 = 처음 말한 20초 동안의 속도 중앙값. 그 20초 동안은 켜지 않는다. 기준 +10% 아래로 내려와야 끈다.
+
 마이크가 없으면(speaking=None) 아무 경고도 켜지 않는다.
 """
 from collections import deque
@@ -22,11 +25,16 @@ QUIET_WINDOW = 10.0      # 최근 이 시간 동안 말한 구간으로 비교
 QUIET_MIN_SPEECH = 3.0   # 창 안에 이만큼은 말해야 판정 (몇 마디로 판정하지 않음)
 QUIET_ON_DB = 6.0        # 기준보다 이만큼 작으면 켬
 QUIET_OFF_DB = 4.0       # 기준과의 차이가 이만큼 이하로 줄면 끔
+FAST_SPM = 400.0         # 분당 음절이 이 이상이면 빠름 (아나운서 약 355)
+FAST_ON_RATIO = 1.25     # 또는 내 기준의 이 배수 이상이면 빠름
+FAST_OFF_RATIO = 1.10    # 내 기준의 이 배수 아래로 내려오면 끔
+RATE_BASELINE_SEC = 20.0 # 처음 말한 이 시간의 속도로 내 기준을 잡음
 QUIET_HOLD = 5.0         # 중앙값이 낮은 상태가 이만큼 이어져야 켬 (창 절반 + 이 시간 ≈ 10초)
 
 VOICE_ALERTS = {
     "stuck": "다음 말을 이어 가 보세요",
     "quiet": "조금 더 크게 말해 주세요!",
+    "fast": "너무 빠릅니다!",
 }
 VOICE_STATUS_ALERTS = {"stuck"}  # 쉬는 순간 규칙 없이 바로 띄우는 경고
 
@@ -43,13 +51,18 @@ class VoiceRules:
         self._window = deque()      # (t, dt, db) — 말하는 프레임만
         self.quiet = False
         self._low_since = None
+        self.rate_baseline = None   # 내 평소 말 속도 (분당 음절)
+        self._rate_samples = []
+        self._spoken = 0.0          # 지금까지 말한 시간
+        self.fast = False
         self.level_gap_db = None    # 기준 대비 현재 차이 (음수 = 작아짐)
         self._last_t = None
         self.events = []            # (이름, 시작, 끝) — 리포트용
         self._open = {}
 
-    def update(self, t, speaking, db=None):
-        """speaking: True/False/None, db: 이번 프레임 마이크 음량(dBFS). 반환: 켜진 경고 이름 목록."""
+    def update(self, t, speaking, db=None, rate=None):
+        """speaking: True/False/None, db: 이번 프레임 마이크 음량(dBFS), rate: 최근 말 속도(분당 음절, 모르면 None).
+        반환: 켜진 경고 이름 목록."""
         dt = 0.0 if self._last_t is None else max(0.0, t - self._last_t)
         self._last_t = t
         if speaking is None:
@@ -58,6 +71,7 @@ class VoiceRules:
         active = []
         if speaking:
             self.started = True
+            self._spoken += dt
             self.silence_since, self.stuck_fired = None, False
             if db is not None:
                 self._feed_level(t, dt, db)
@@ -71,7 +85,21 @@ class VoiceRules:
                 active.append("stuck")
         if self.quiet:
             active.append("quiet")
+        if rate is not None:
+            self._feed_rate(rate)
+        if self.fast:
+            active.append("fast")
         return self._track(t, active)
+
+    def _feed_rate(self, rate):
+        if self.rate_baseline is None:
+            self._rate_samples.append(rate)
+            if self._spoken >= RATE_BASELINE_SEC:
+                self.rate_baseline = median(self._rate_samples)
+        elif rate >= FAST_SPM or rate >= self.rate_baseline * FAST_ON_RATIO:
+            self.fast = True
+        elif rate < self.rate_baseline * FAST_OFF_RATIO:
+            self.fast = False
 
     def _feed_level(self, t, dt, db):
         if self.baseline_db is None:
@@ -111,4 +139,5 @@ class VoiceRules:
             "baseline_db": None if self.baseline_db is None else round(self.baseline_db, 1),
             "stuck_count": sum(1 for n, _, _ in self.events if n == "stuck"),
             "quiet_s": round(sum(e - s for n, s, e in self.events if n == "quiet"), 1),
+            "fast_s": round(sum(e - s for n, s, e in self.events if n == "fast"), 1),
         }

@@ -10,7 +10,9 @@ step5_coaching.py의 판정(카메라 설정 → 규칙 → 쉴 때만 경고)�
 import threading
 import time
 
+import eval_report
 from camera_setup import MESSAGES, CameraSetup
+from eval_recorder import TASKS, Recorder
 from feedback_gate import FeedbackGate
 from step3_coaching import ALERTS, HOLD_SEC, CoachRules
 
@@ -141,6 +143,18 @@ class CoachSession:
         return out
 
 
+def frame_row(info, box, speaking, voice, proc_ms, active):
+    """평가 녹화의 frames.csv 한 줄 (eval_recorder.FRAME_COLS)"""
+    row = {"proc_ms": proc_ms, "face": info is not None, "speaking": speaking, "active": "|".join(active),
+           "db": voice.get("db"), "rate_spm": voice.get("rate_spm"), "filler": voice.get("filler")}
+    if info:
+        row.update(yaw_raw=info["yaw"], pitch_raw=info["pitch"], gaze_x=info.get("gaze_x"),
+                   gaze_y=info.get("gaze_y"), blink=max(info["blink_l"], info["blink_r"]))
+    if box:
+        row["cx"] = box["cx"]
+    return row
+
+
 class CoachEngine:
     """웹캠·마이크를 읽어 CoachSession을 돌리는 백그라운드 스레드"""
 
@@ -155,6 +169,9 @@ class CoachEngine:
         self.mic_error = None
         self.fps = 0.0
         self.session = None
+        self.speech = None
+        self.voice = {}           # 음성 상태 (말 속도, 군말)
+        self.recorder = None      # 평가 녹화 중이면 Recorder
         self._stop = threading.Event()
         self._start = time.perf_counter()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -171,6 +188,19 @@ class CoachEngine:
 
     def command(self, action, **kw):
         """브라우저 버튼 → 엔진. 돌려주는 값은 그대로 JSON 응답이 된다."""
+        if action == "eval_stop":
+            with self.lock:
+                rec, self.recorder = self.recorder, None
+                if rec is None:
+                    return {"ok": False, "error": "녹화 중이 아닙니다"}
+                if self.speech:
+                    self.speech.sink = None
+                rec.close(self.now())
+            try:  # 표 계산은 잠금 밖에서 (영상이 멈추지 않게)
+                text = eval_report.report(rec.dir)
+            except Exception as e:
+                text = f"녹화는 저장했지만 결과 계산에 실패했습니다: {e}"
+            return {"ok": True, "dir": str(rec.dir), "report": text}
         with self.lock:
             s = self.session
             if s is None:
@@ -187,6 +217,16 @@ class CoachEngine:
                 return {"ok": True, "report": s.stop(t) or s.last_report}
             elif action == "report":
                 return {"ok": True, "report": s.last_report}
+            elif action == "eval_start":
+                if kw.get("task") not in TASKS or self.recorder is not None:
+                    return {"ok": False, "error": "평가를 시작할 수 없습니다 (이미 녹화 중이거나 없는 과제)"}
+                self.recorder = Recorder(kw["task"], t)
+                if self.speech:
+                    self.speech.sink = self.recorder.audio
+                return {"ok": True, "dir": str(self.recorder.dir), "no_audio": self.speech is None}
+            elif action == "eval_mark":
+                if self.recorder is not None:
+                    self.recorder.mark(t, kw.get("name"), str(kw.get("note", "")))
             else:
                 return {"ok": False, "error": f"알 수 없는 명령: {action}"}
             return {"ok": True}
@@ -198,6 +238,8 @@ class CoachEngine:
             out = self.session.state(self.now())
             out["fps"] = round(self.fps, 1)
             out["mic_error"] = self.mic_error
+            out["voice"] = self.voice
+            out["recording"] = self.recorder.dir.name if self.recorder else None
             out["error"] = self.error
             return out
 
@@ -232,6 +274,7 @@ class CoachEngine:
             print(f"마이크를 열지 못해 음성 없이 진행합니다: {speech.error}")
             speech = None
         with self.lock:
+            self.speech = speech
             self.session = CoachSession(no_audio=speech is None)
 
         last_ts, last_t = -1, None
@@ -243,16 +286,23 @@ class CoachEngine:
                         with self.lock:
                             self.error = "웹캠 프레임을 읽지 못했습니다"
                         break
-                    frame = cv2.flip(frame, 1)
+                    raw, frame = frame, cv2.flip(frame, 1)
                     t = self.now()
                     ts = max(int(t * 1000), last_ts + 1)
                     last_ts = ts
                     result = landmarker.detect_for_video(to_mp_image(frame), ts)
                     info = analyze(result)
+                    proc_ms = (self.now() - t) * 1000
+                    box = face_box(result)
                     speaking = speech.speaking if speech else None
+                    voice = speech.voice() if speech else {}
                     ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
                     with self.frame_ready:
-                        self.session.feed(t, info, face_box(result), speaking)
+                        self.session.feed(t, info, box, speaking)
+                        self.voice = voice
+                        if self.recorder is not None:
+                            self.recorder.frame(t, raw, frame_row(info, box, speaking, voice, proc_ms,
+                                                                  self.session.active))
                         if last_t is not None and t > last_t:
                             self.fps = 0.9 * self.fps + 0.1 / (t - last_t)
                         last_t = t
@@ -266,6 +316,8 @@ class CoachEngine:
             print("분석 엔진 오류:", e)
         finally:
             cap.release()
+            if self.recorder is not None:
+                self.recorder.close(self.now())
             if speech:
                 speech.close()
             with self.frame_ready:

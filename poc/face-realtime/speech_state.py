@@ -8,10 +8,14 @@
 - 소음보다 일정 배 이상 크면 말함, 작아지면 0.3초 뒤에 안 말함으로 바꾼다 (두 기준을 달리 둬 깜빡임 방지).
 - sounddevice가 없거나 마이크를 못 열면 None을 돌려주고, 그러면 FeedbackGate는 음성 없이 동작한다.
 """
+import math
 import threading
 import time
 
 import numpy as np
+
+from filler_detect import FillerDetector
+from speech_rate import SpeechRate
 
 SAMPLE_RATE = 16000
 BLOCK_SEC = 0.03         # 30ms 단위로 음량 계산
@@ -60,6 +64,10 @@ class MicSpeechState:
 
     def __init__(self, device=None):
         self.vad = EnergyVad()
+        self.rate = SpeechRate(SAMPLE_RATE)       # 말 속도 (8단계)
+        self.filler = FillerDetector(SAMPLE_RATE)  # 길게 끄는 군말 (8단계)
+        self.db = None            # 방금 조각의 음량(dBFS)
+        self.sink = None          # 평가 녹음용: 조각(실수 배열)을 받는 함수
         self.available = False
         self.error = None
         self._stream = None
@@ -75,9 +83,17 @@ class MicSpeechState:
             self.error = str(e)
 
     def _callback(self, data, frames, time_info, status):
-        rms = float(np.sqrt(np.mean(np.square(data[:, 0]))))
+        x = data[:, 0].copy()
+        rms = float(np.sqrt(np.mean(np.square(x))))
         with self._lock:
             self.vad.feed(time.perf_counter() - self._start, rms)
+            self.db = 20 * math.log10(max(rms, 1e-6))
+            self.rate.feed(x)
+            if self.vad.noise is not None:
+                self.filler.feed(x, self.vad.noise * ON_RATIO)
+        sink = self.sink
+        if sink is not None:
+            sink(x)
 
     @property
     def calibrating(self):
@@ -89,6 +105,14 @@ class MicSpeechState:
             return None
         with self._lock:
             return self.vad.speaking
+
+    def voice(self):
+        """화면·기록용 음성 상태: 음량, 말 속도(분당 음절), 지금 군말 중인지, 지금까지 군말 수"""
+        with self._lock:
+            noise = self.vad.noise
+            floor = None if noise is None else 20 * math.log10(noise * OFF_RATIO)
+            return {"db": self.db, "rate_spm": self.rate.rate(floor),
+                    "filler": self.filler.active, "filler_count": len(self.filler.events)}
 
     def close(self):
         if self._stream is not None:

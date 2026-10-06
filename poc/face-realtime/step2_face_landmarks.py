@@ -75,6 +75,10 @@ def analyze(result):
         # 카메라에서 얼굴을 향하는 방향(°): 얼굴이 화면 가운데에서 옆으로 벗어난 정도
         "ray_yaw": math.degrees(math.atan2(matrix[0, 3], -matrix[2, 3])),
         "blink_l": s["eyeBlinkLeft"], "blink_r": s["eyeBlinkRight"],
+        # 눈동자 방향(-1~1): 두 눈의 눈 방향 점수 8개를 좌우·위아래 두 값으로 합친다.
+        # 거울 화면이라 좌우 부호는 믿지 말고 사람마다 잰 기준과 비교해 쓴다 (eval_report.py)
+        "gaze_x": (s["eyeLookOutLeft"] + s["eyeLookInRight"] - s["eyeLookInLeft"] - s["eyeLookOutRight"]) / 2,
+        "gaze_y": (s["eyeLookUpLeft"] + s["eyeLookUpRight"] - s["eyeLookDownLeft"] - s["eyeLookDownRight"]) / 2,
         "smile": (s["mouthSmileLeft"] + s["mouthSmileRight"]) / 2,
     }
 

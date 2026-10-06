@@ -14,6 +14,8 @@
   GET  /events          상태 스트림 (Server-Sent Events, 초당 10회)
   GET  /api/questions   연습 질문 목록
   POST /api/command     {"action": "start" | "stop" | "redo_setup" | "skip_position" | "report", "question": "..."}
+  GET  /eval.html       평가용 지시 화면 (8단계): 지시를 따라 하는 동안 recordings/ 에 영상·음성·정답을 저장
+                        {"action": "eval_start", "task": "gaze" | "rate" | "filler"}, "eval_mark", "eval_stop"
 """
 import argparse
 import json

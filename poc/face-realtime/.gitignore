@@ -4,3 +4,4 @@ venv/
 __pycache__/
 models/
 .pytest_cache/
+recordings/

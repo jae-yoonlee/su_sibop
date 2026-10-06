@@ -58,6 +58,10 @@ function renderState(s) {
   $("tile-pose").classList.toggle("bad", !!bad);
   $("m-voice").textContent = s.no_audio ? "마이크 없음" : s.speaking == null ? "준비 중" : s.speaking ? "말하는 중" : "조용함";
 
+  const v = s.voice || {};
+  $("m-rate").textContent = s.no_audio ? "-" : `${v.rate_spm ? `분당 ${Math.round(v.rate_spm)}음절` : "측정 중"} · ${v.filler_count || 0}회`;
+  $("m-rate").parentElement.classList.toggle("bad", !!v.filler);
+
   // 영상 위 안내
   $("setup-msg").hidden = s.phase !== "setup";
   if (s.phase === "setup") $("setup-msg").textContent = s.setup.message;

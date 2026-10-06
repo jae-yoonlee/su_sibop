@@ -15,7 +15,7 @@
 매번 달라지게 (같은 자소서로 다시 연습해도 다른 꼬리질문)
 - 찾은 문제 여러 개 중 하나를 무작위로 고르고, 문장 틀도 이유마다 3가지 중 무작위로 고른다.
 - 같은 자소서로 전에 했던 꼬리질문(history)은 피한다. 다른 선택지가 없을 때만 다시 쓴다.
-- AI에는 문제 목록 순서를 섞어 주고, 전에 한 질문을 '반복 금지'로 알려 주고, 온도 0.9로 부른다.
+- AI에는 문제 목록 순서를 섞고 살펴볼 관점(역할 비중·직접 한 행동 등 6가지 중 하나)을 무작위로 주고, 전에 한 질문을 '반복 금지'로 알려 주고, 온도 0.9로 부른다.
 - 규칙의 문제 '검출'은 그대로 결정적이라 정확도 평가에는 영향이 없다. 무작위 seed는 결과에 남겨 재현할 수 있다.
 
 휴식 10초 안에 끝내야 하므로 답변 받아쓰기는 답변 도중 쉼마다 조금씩 해 둬야 한다 (coach_engine 쪽 일).
@@ -36,6 +36,8 @@ TIME_BUDGET = 6.0   # AI에 쓸 최대 시간(초). 휴식 10초에서 받아쓰
 MAX_LEN = 60
 ANSWER_CHARS = 800  # AI에 넣는 답변 길이 상한 (2분 답변 ≈ 600~800자)
 FACT_CHECKS = {"mismatch", "missing_fact"}  # 자소서 사실 확인은 규칙 질문을 그대로 씀
+ANGLES = ["팀 안에서 본인 역할의 비중", "본인이 직접 한 행동", "결과의 크기와 그것을 확인한 방법",
+          "그렇게 판단한 이유", "가장 어려웠던 점", "다시 한다면 다르게 할 점"]  # AI에 무작위로 하나 줌
 TEMPERATURE = 0.9   # 매번 다른 질문이 나오게
 HISTORY_FILE = Path(__file__).parent / "results" / "followup_history.json"
 HISTORY_KEEP = 30   # 자소서마다 기억할 최근 꼬리질문 수
@@ -50,13 +52,13 @@ RESULT_WORDS = re.compile(r"\d|절반|두\s?배|세\s?배")
 
 TEMPLATES = {  # 이유마다 문장 틀 3가지 (무작위로 고름)
     "mismatch": [
-        "자기소개서에는 {doc}라고 쓰셨는데 방금 {said}라고 하셨습니다. 어느 쪽이 맞나요?",
-        "방금 {said}라고 하셨는데 자기소개서에는 {doc}로 되어 있습니다. 설명해 주시겠어요?",
-        "{doc}와 {said} 중 어느 숫자가 정확한지, 차이가 생긴 이유는 무엇인가요?",
+        "자기소개서에는 {doc_라고} 쓰셨는데 방금 {said_라고} 하셨습니다. 어느 쪽이 맞나요?",
+        "방금 {said_라고} 하셨는데 자기소개서에는 {doc_로} 되어 있습니다. 설명해 주시겠어요?",
+        "{doc_와} {said} 중 어느 숫자가 정확한지, 차이가 생긴 이유는 무엇인가요?",
     ],
     "missing_fact": [
         "자기소개서에 적은 {doc}에 대해 조금 더 구체적으로 설명해 주시겠어요?",
-        "자기소개서에는 {doc}라고 되어 있는데, 그 숫자는 어떻게 나온 건가요?",
+        "자기소개서에는 {doc_라고} 되어 있는데, 그 숫자는 어떻게 나온 건가요?",
         "답변에서 {doc} 이야기가 빠졌는데, 그 부분을 말씀해 주시겠어요?",
     ],
     "no_result": [
@@ -76,7 +78,7 @@ TEMPLATES = {  # 이유마다 문장 틀 3가지 (무작위로 고름)
     ],
     "vague": [
         "'{quote}'라고 하셨는데, 구체적으로 어떤 행동을 하셨나요?",
-        "'{quote}'를 보여 주는 구체적인 사례 하나를 말씀해 주시겠어요?",
+        "'{quote}'{quote_를_josa} 보여 주는 구체적인 사례 하나를 말씀해 주시겠어요?",
         "'{quote}'라는 말을 숫자나 행동으로 바꿔 말씀해 주시겠어요?",
     ],
     "generic": [
@@ -102,6 +104,8 @@ PROMPT = """너는 한국 기업의 면접관이다. 지원자 답변을 보고 
 
 코드가 찾은 답변의 약점:
 {findings}
+
+이번에 먼저 살펴볼 관점: {angle}
 
 이전 연습에서 이미 한 꼬리질문 (같거나 비슷하게 묻지 마라):
 {previous}
@@ -154,6 +158,41 @@ def find_issues(main, answer):
     return issues
 
 
+# 숫자 뒤 조사: 받침에 맞춰 고름 ("6개월이라고", "12%라고")
+JOSA = {"라고": ("이라고", "라고"), "로": ("으로", "로"), "와": ("과", "와"), "를": ("을", "를"), "는": ("은", "는")}
+DIGIT_FINAL = {"0": "ㅇ", "1": "ㄹ", "2": "", "3": "ㅁ", "4": "", "5": "", "6": "ㄱ", "7": "ㄹ", "8": "ㄹ", "9": ""}
+
+
+def _final(word):
+    """마지막 글자의 받침 종류: ''(없음), 'ㄹ', 그 밖은 '있음'"""
+    c = (word or " ")[-1]
+    if c == "%":
+        return ""                                # 퍼센트
+    if c in DIGIT_FINAL:
+        return DIGIT_FINAL[c]
+    if "가" <= c <= "힣":
+        f = (ord(c) - 0xAC00) % 28
+        return "" if f == 0 else "ㄹ" if f == 8 else "있음"
+    return ""
+
+
+def josa(word, kind):
+    with_final, without = JOSA[kind]
+    f = _final(word)
+    if kind == "로" and f == "ㄹ":
+        return without
+    return with_final if f else without
+
+
+def _with_josa(slots):
+    out = dict(slots)
+    for k, v in slots.items():
+        for kind in JOSA:
+            out[f"{k}_{kind}"] = v + josa(v, kind)
+            out[f"{k}_{kind}_josa"] = josa(v, kind)
+    return out
+
+
 def _key(name, slots):
     return name + json.dumps(slots, ensure_ascii=False, sort_keys=True)
 
@@ -170,7 +209,8 @@ def choose_issue(issues, rng, asked_keys=()):
 
 def template_question(issue, rng, asked=()):
     name, slots = issue
-    texts = [t.format(**slots) for t in TEMPLATES[name]]
+    full = _with_josa(slots)
+    texts = [t.format(**full) for t in TEMPLATES[name]]
     fresh = [t for t in texts if t not in asked]
     return rng.choice(fresh or texts)
 
@@ -273,7 +313,8 @@ def generate_followup(main, answer, use_llm=True, ask_fn=None, model=None, budge
     listed = "\n".join(f"{i}. {LABELS[n]}" for i, (n, _) in enumerate(shown, 1)) or "(없음)"
     previous = "\n".join(f"- {q}" for q in list(asked_q)[-5:] if q) or "(없음)"
     prompt = PROMPT.format(main=main.get("question", ""), evidence=main.get("evidence") or "(없음)",
-                           answer=_norm(answer)[:ANSWER_CHARS], findings=listed, previous=previous)
+                           answer=_norm(answer)[:ANSWER_CHARS], findings=listed, previous=previous,
+                           angle=rng.choice(ANGLES))
     try:
         data = json.loads(_call(ask_fn, model or MODELS["exaone"], prompt, budget))
         reason, q = check_ai(data, shown, main, answer)

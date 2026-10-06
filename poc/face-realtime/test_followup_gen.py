@@ -174,3 +174,27 @@ def test_history_roundtrip_without_storing_resume(tmp_path):
     assert fg.load_history(resume, path)[0]["question"] == out["question"]
     assert fg.load_history("다른 자소서", path) == []
     assert "비밀" not in path.read_text(encoding="utf-8")
+
+
+def test_josa_follows_final_consonant():
+    assert fg.josa("6개월", "라고") == "이라고" and fg.josa("12%", "라고") == "라고"
+    assert fg.josa("6개월", "로") == "로" and fg.josa("3년", "로") == "으로" and fg.josa("2배", "로") == "로"
+    assert fg.josa("6개월", "와") == "과" and fg.josa("12%", "와") == "와"
+
+
+def test_templates_have_no_broken_josa():
+    for s in range(40):
+        q = fg.generate_followup(MAIN, "제가 6개월 동안 20% 줄였습니다.", use_llm=False, seed=s)["question"]
+        for bad in ("개월라고", "개월와", "%이라고", "%과", "개월는"):
+            assert bad not in q, q
+
+
+def test_prompt_has_random_angle():
+    seen = set()
+
+    def ask(client, model, prompt):
+        seen.add(next(l for l in prompt.splitlines() if l.startswith("이번에 먼저")))
+        return "{}"
+    for s in range(30):
+        fg.generate_followup(MAIN, SOFT, ask_fn=ask, seed=s)
+    assert len(seen) >= 3

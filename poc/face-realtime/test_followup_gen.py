@@ -52,7 +52,7 @@ def test_same_input_same_issues():
 
 
 # ── 정해진 문장 (AI 없이) ──
-def test_template_uses_first_issue():
+def test_fact_issue_is_always_chosen():
     out = fg.generate_followup(MAIN, ANSWER, use_llm=False)
     assert out["source"] == "template" and out["reason"] == "mismatch"
     assert "12%" in out["question"] and "20%" in out["question"]
@@ -66,8 +66,16 @@ def test_no_issue_gives_generic():
 
 
 # ── AI가 고름 ──
+def pick_label(label, quote, question):
+    """프롬프트에서 label의 번호를 찾아 고르는 가짜 AI (목록 순서가 섞여도 동작)"""
+    def ask(client, model, prompt):
+        n = next(int(l.split(".")[0]) for l in prompt.splitlines() if l.endswith(". " + label) or l[2:].lstrip(". ") == label)
+        return json.dumps({"pick": n, "quote": quote, "question": question}, ensure_ascii=False)
+    return ask
+
+
 def test_ai_picks_issue_with_quote():
-    ask = fake({"pick": 2, "quote": "열심히 노력했습니다", "question": "열심히 했다는 건 구체적으로 어떤 행동이었나요?"})
+    ask = pick_label("모호한 표현", "열심히 노력했습니다", "열심히 했다는 건 구체적으로 어떤 행동이었나요?")
     out = fg.generate_followup(MAIN, SOFT, ask_fn=ask)
     assert out["source"] == "exaone" and out["reason"] == "vague"
 
@@ -85,7 +93,7 @@ def test_prompt_lists_rule_findings():
         seen["p"] = prompt
         return "{}"
     fg.generate_followup(MAIN, SOFT, ask_fn=ask)
-    assert "1. 본인이 한 일을 말하지 않음" in seen["p"] and "2. 모호한 표현" in seen["p"]
+    assert "본인이 한 일을 말하지 않음" in seen["p"] and "모호한 표현" in seen["p"]
 
 
 def test_ai_rejected_cases_fall_back_to_template():
@@ -99,7 +107,7 @@ def test_ai_rejected_cases_fall_back_to_template():
     ]
     for reply in bad:
         out = fg.generate_followup(MAIN, SOFT, ask_fn=fake(reply))
-        assert out["source"] == "template" and out["reason"] == "no_role", reply
+        assert out["source"] == "template" and out["reason"] in ("no_role", "vague"), reply
 
 
 def test_slow_ai_falls_back_within_budget():
@@ -123,3 +131,46 @@ def test_empty_answer_skips_ai():
 def test_fact_mismatch_never_goes_to_ai():
     out = fg.generate_followup(MAIN, ANSWER, ask_fn=fake(RuntimeError("부르면 안 됨")))
     assert out["source"] == "template" and out["reason"] == "mismatch" and out["error"] is None
+
+
+# ── 매번 달라지게 ──
+def test_questions_vary_across_runs():
+    qs = {fg.generate_followup(MAIN, SOFT, use_llm=False)["question"] for _ in range(30)}
+    assert len(qs) >= 3
+
+
+def test_same_seed_reproduces():
+    a = fg.generate_followup(MAIN, SOFT, use_llm=False, seed=7)
+    b = fg.generate_followup(MAIN, SOFT, use_llm=False, seed=7)
+    assert a == b and a["seed"] == 7
+
+
+def test_history_avoids_previous_issue():
+    prev = fg.generate_followup(MAIN, SOFT, use_llm=False, seed=1)
+    for s in range(20):
+        out = fg.generate_followup(MAIN, SOFT, use_llm=False, seed=s, history=[prev])
+        assert out["key"] != prev["key"]                 # 문제가 2개라 다른 쪽을 물음
+
+
+def test_history_avoids_previous_wording_when_only_one_issue():
+    prev = fg.generate_followup(MAIN, ANSWER, use_llm=False, seed=1)   # 사실 확인 1개뿐
+    for s in range(20):
+        out = fg.generate_followup(MAIN, ANSWER, use_llm=False, seed=s, history=[prev])
+        assert out["reason"] == "mismatch" and out["question"] != prev["question"]
+
+
+def test_ai_repeating_previous_question_is_rejected():
+    q = "열심히 했다는 건 구체적으로 어떤 행동이었나요?"
+    ask = pick_label("모호한 표현", "열심히 노력했습니다", q)
+    out = fg.generate_followup(MAIN, SOFT, ask_fn=ask, history=[{"question": q, "key": "x"}])
+    assert out["source"] == "template" and "전에" in out["error"]
+
+
+def test_history_roundtrip_without_storing_resume(tmp_path):
+    path = tmp_path / "h.json"
+    resume = "비밀 자소서 내용입니다."
+    out = fg.generate_followup(MAIN, SOFT, use_llm=False)
+    fg.save_history(resume, out, path)
+    assert fg.load_history(resume, path)[0]["question"] == out["question"]
+    assert fg.load_history("다른 자소서", path) == []
+    assert "비밀" not in path.read_text(encoding="utf-8")

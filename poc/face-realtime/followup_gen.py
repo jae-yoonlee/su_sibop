@@ -10,22 +10,35 @@
    그 밖에는 EXAONE(Ollama)이 찾은 문제 중 하나를 고르거나(또는 더 중요한 다른 점을 골라) 꼬리질문을 쓴다.
    반드시 답변 속 문장을 그대로 인용하게 하고 코드로 검사한다
    (인용이 답변에 있음, 60자 이내, 존댓말 물음, 답변·자소서에 없는 숫자를 만들지 않음).
-3) 시간 안에 못 하거나 검사에 떨어지면 1)의 첫 번째 문제를 정해진 문장 틀로 묻는다 (항상 성공).
+3) 시간 안에 못 하거나 검사에 떨어지면 찾은 문제 하나를 정해진 문장 틀로 묻는다 (항상 성공).
+
+매번 달라지게 (같은 자소서로 다시 연습해도 다른 꼬리질문)
+- 찾은 문제 여러 개 중 하나를 무작위로 고르고, 문장 틀도 이유마다 3가지 중 무작위로 고른다.
+- 같은 자소서로 전에 했던 꼬리질문(history)은 피한다. 다른 선택지가 없을 때만 다시 쓴다.
+- AI에는 문제 목록 순서를 섞어 주고, 전에 한 질문을 '반복 금지'로 알려 주고, 온도 0.9로 부른다.
+- 규칙의 문제 '검출'은 그대로 결정적이라 정확도 평가에는 영향이 없다. 무작위 seed는 결과에 남겨 재현할 수 있다.
 
 휴식 10초 안에 끝내야 하므로 답변 받아쓰기는 답변 도중 쉼마다 조금씩 해 둬야 한다 (coach_engine 쪽 일).
 """
+import hashlib
 import json
+import random
 import re
 import time
+import urllib.request
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 
-from question_gen import MODELS, _norm, ask_ollama, ollama_available
+from question_gen import MODELS, OLLAMA_URL, _norm, ollama_available
 
 TIME_BUDGET = 6.0   # AI에 쓸 최대 시간(초). 휴식 10초에서 받아쓰기 마무리 몫을 뺌
 MAX_LEN = 60
-ANSWER_CHARS = 800
-FACT_CHECKS = {"mismatch", "missing_fact"}  # 자소서 사실 확인은 규칙 질문을 그대로 씀  # AI에 넣는 답변 길이 상한 (2분 답변 ≈ 600~800자)
+ANSWER_CHARS = 800  # AI에 넣는 답변 길이 상한 (2분 답변 ≈ 600~800자)
+FACT_CHECKS = {"mismatch", "missing_fact"}  # 자소서 사실 확인은 규칙 질문을 그대로 씀
+TEMPERATURE = 0.9   # 매번 다른 질문이 나오게
+HISTORY_FILE = Path(__file__).parent / "results" / "followup_history.json"
+HISTORY_KEEP = 30   # 자소서마다 기억할 최근 꼬리질문 수
 
 UNITS = r"(%|퍼센트|프로|개월|년|월|주|일|명|배|건|개|원|시간|분)"
 NUM_UNIT = re.compile(r"(\d+(?:[.,]\d+)?)\s*" + UNITS)
@@ -35,14 +48,42 @@ SELF = re.compile(r"(제가|저는|저도|제가요|직접|맡아|맡았|담당)
 TEAM = re.compile(r"(우리|저희|팀이|팀원들이|다 같이|함께)")
 RESULT_WORDS = re.compile(r"\d|절반|두\s?배|세\s?배")
 
-TEMPLATES = {
-    "mismatch": "자기소개서에는 {doc}라고 쓰셨는데 방금 {said}라고 하셨습니다. 어느 쪽이 맞나요?",
-    "missing_fact": "자기소개서에 적은 {doc}에 대해 조금 더 구체적으로 설명해 주시겠어요?",
-    "no_result": "그 결과를 숫자로 말씀해 주신다면 어느 정도였나요?",
-    "no_role": "그 일에서 본인이 직접 맡은 부분은 무엇이었나요?",
-    "team_heavy": "팀 전체 성과 중 본인이 기여한 비중은 어느 정도였나요?",
-    "vague": "'{quote}'라고 하셨는데, 구체적으로 어떤 행동을 하셨나요?",
-    "generic": "방금 답변에서 가장 어려웠던 점과 그것을 어떻게 해결했는지 말씀해 주세요.",
+TEMPLATES = {  # 이유마다 문장 틀 3가지 (무작위로 고름)
+    "mismatch": [
+        "자기소개서에는 {doc}라고 쓰셨는데 방금 {said}라고 하셨습니다. 어느 쪽이 맞나요?",
+        "방금 {said}라고 하셨는데 자기소개서에는 {doc}로 되어 있습니다. 설명해 주시겠어요?",
+        "{doc}와 {said} 중 어느 숫자가 정확한지, 차이가 생긴 이유는 무엇인가요?",
+    ],
+    "missing_fact": [
+        "자기소개서에 적은 {doc}에 대해 조금 더 구체적으로 설명해 주시겠어요?",
+        "자기소개서에는 {doc}라고 되어 있는데, 그 숫자는 어떻게 나온 건가요?",
+        "답변에서 {doc} 이야기가 빠졌는데, 그 부분을 말씀해 주시겠어요?",
+    ],
+    "no_result": [
+        "그 결과를 숫자로 말씀해 주신다면 어느 정도였나요?",
+        "그 일로 무엇이 얼마나 달라졌는지 수치로 말씀해 주시겠어요?",
+        "성과를 확인할 수 있는 숫자가 있다면 무엇인가요?",
+    ],
+    "no_role": [
+        "그 일에서 본인이 직접 맡은 부분은 무엇이었나요?",
+        "팀이 아니라 본인이 직접 한 행동 하나만 말씀해 주시겠어요?",
+        "그 과정에서 본인이 내린 결정은 무엇이었나요?",
+    ],
+    "team_heavy": [
+        "팀 전체 성과 중 본인이 기여한 비중은 어느 정도였나요?",
+        "본인이 없었다면 그 결과는 어떻게 달라졌을까요?",
+        "팀원들과 비교해 본인만 맡았던 일은 무엇인가요?",
+    ],
+    "vague": [
+        "'{quote}'라고 하셨는데, 구체적으로 어떤 행동을 하셨나요?",
+        "'{quote}'를 보여 주는 구체적인 사례 하나를 말씀해 주시겠어요?",
+        "'{quote}'라는 말을 숫자나 행동으로 바꿔 말씀해 주시겠어요?",
+    ],
+    "generic": [
+        "방금 답변에서 가장 어려웠던 점과 그것을 어떻게 해결했는지 말씀해 주세요.",
+        "그 경험을 다시 한다면 무엇을 다르게 하시겠어요?",
+        "그 일에서 가장 크게 배운 점을 한 가지 사례로 말씀해 주세요.",
+    ],
 }
 LABELS = {
     "mismatch": "숫자가 자기소개서와 다름",
@@ -62,8 +103,11 @@ PROMPT = """너는 한국 기업의 면접관이다. 지원자 답변을 보고 
 코드가 찾은 답변의 약점:
 {findings}
 
+이전 연습에서 이미 한 꼬리질문 (같거나 비슷하게 묻지 마라):
+{previous}
+
 규칙
-- 위 약점 중 가장 중요한 하나를 골라 "pick"에 번호를 쓴다. 더 중요한 다른 점이 있으면 "pick"에 0을 쓴다.
+- 위 약점 중 하나를 골라 "pick"에 번호를 쓴다. 더 중요한 다른 점이 있으면 "pick"에 0을 쓴다.
 - "quote"에는 질문의 근거가 된 답변 속 표현을 한 글자도 바꾸지 말고 그대로 복사한다.
 - 질문은 존댓말 한 문장, 60자 이내. 숫자와 사실을 지어내지 않는다.
 
@@ -110,9 +154,25 @@ def find_issues(main, answer):
     return issues
 
 
-def template_question(issues):
-    name, slots = issues[0] if issues else ("generic", {})
-    return name, TEMPLATES[name].format(**slots)
+def _key(name, slots):
+    return name + json.dumps(slots, ensure_ascii=False, sort_keys=True)
+
+
+def choose_issue(issues, rng, asked_keys=()):
+    """사실 확인(숫자)이 있으면 그중에서, 없으면 나머지 중에서 무작위. 전에 물은 것은 다른 게 있으면 피함."""
+    if not issues:
+        return "generic", {}
+    facts_ = [i for i in issues if i[0] in FACT_CHECKS]
+    pool = facts_ or issues
+    fresh = [i for i in pool if _key(*i) not in asked_keys]
+    return rng.choice(fresh or pool)
+
+
+def template_question(issue, rng, asked=()):
+    name, slots = issue
+    texts = [t.format(**slots) for t in TEMPLATES[name]]
+    fresh = [t for t in texts if t not in asked]
+    return rng.choice(fresh or texts)
 
 
 def check_ai(data, issues, main, answer):
@@ -139,6 +199,43 @@ def check_ai(data, issues, main, answer):
     return (issues[pick - 1][0] if pick else "ai_other"), q
 
 
+def ask_ollama_varied(seed):
+    """온도를 높이고 seed를 바꿔 매번 다른 답이 나오게 Ollama를 부르는 함수"""
+    def ask(client, model, prompt):
+        body = json.dumps({"model": model, "prompt": prompt, "format": "json", "stream": False,
+                           "options": {"temperature": TEMPERATURE, "seed": seed}}).encode()
+        req = urllib.request.Request(OLLAMA_URL, data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=TIME_BUDGET + 1) as r:
+            return json.loads(r.read())["response"]
+    return ask
+
+
+# ── 같은 자소서로 전에 한 꼬리질문 기록 ──
+def _resume_id(resume):
+    return hashlib.sha256(_norm(resume).encode()).hexdigest()[:16]
+
+
+def load_history(resume, path=HISTORY_FILE):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8")).get(_resume_id(resume), [])
+    except (OSError, ValueError):
+        return []
+
+
+def save_history(resume, out, path=HISTORY_FILE):
+    """generate_followup 결과를 기록. 자소서 원문은 저장하지 않고 해시만 쓴다."""
+    path = Path(path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    rows = data.setdefault(_resume_id(resume), [])
+    rows.append({"question": out["question"], "key": out.get("key")})
+    data[_resume_id(resume)] = rows[-HISTORY_KEEP:]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def _call(ask_fn, model, prompt, budget):
     pool = ThreadPoolExecutor(max_workers=1)
     fut = pool.submit(ask_fn, None, model, prompt)
@@ -150,24 +247,38 @@ def _call(ask_fn, model, prompt, budget):
         pool.shutdown(wait=False)  # 늦은 응답은 버림
 
 
-def generate_followup(main, answer, use_llm=True, ask_fn=None, model=None, budget=TIME_BUDGET):
-    """반환: {"question", "reason", "issues": [규칙이 찾은 이름들], "source": "exaone"|"template", "error"}"""
+def generate_followup(main, answer, use_llm=True, ask_fn=None, model=None, budget=TIME_BUDGET,
+                      history=(), seed=None):
+    """history: 같은 자소서로 전에 한 꼬리질문 기록 (load_history 결과).
+    반환: {"question", "reason", "issues": [규칙이 찾은 이름들], "source": "exaone"|"template",
+           "error", "seed", "key"}"""
+    seed = random.randrange(2**31) if seed is None else seed
+    rng = random.Random(seed)
+    asked_q = {h.get("question") for h in history}
+    asked_keys = {h.get("key") for h in history}
     issues = find_issues(main, answer)
-    reason, q = template_question(issues)
-    out = {"question": q, "reason": reason, "issues": [n for n, _ in issues], "source": "template", "error": None}
-    if not use_llm or not _norm(answer) or reason in FACT_CHECKS:
+    issue = choose_issue(issues, rng, asked_keys)
+    out = {"question": template_question(issue, rng, asked_q), "reason": issue[0],
+           "issues": [n for n, _ in issues], "source": "template", "error": None,
+           "seed": seed, "key": _key(*issue)}
+    if not use_llm or not _norm(answer) or issue[0] in FACT_CHECKS:
         return out
     if ask_fn is None:
         if not ollama_available():
             out["error"] = "Ollama가 꺼져 있어 정해진 문장으로 진행합니다"
             return out
-        ask_fn = ask_ollama
-    listed = "\n".join(f"{i}. {LABELS[n]}" for i, (n, _) in enumerate(issues, 1)) or "(없음)"
+        ask_fn = ask_ollama_varied(seed)
+    shown = issues[:]
+    rng.shuffle(shown)                           # 순서를 섞어 AI가 매번 첫 번째만 고르지 않게
+    listed = "\n".join(f"{i}. {LABELS[n]}" for i, (n, _) in enumerate(shown, 1)) or "(없음)"
+    previous = "\n".join(f"- {q}" for q in list(asked_q)[-5:] if q) or "(없음)"
     prompt = PROMPT.format(main=main.get("question", ""), evidence=main.get("evidence") or "(없음)",
-                           answer=_norm(answer)[:ANSWER_CHARS], findings=listed)
+                           answer=_norm(answer)[:ANSWER_CHARS], findings=listed, previous=previous)
     try:
         data = json.loads(_call(ask_fn, model or MODELS["exaone"], prompt, budget))
-        reason, q = check_ai(data, issues, main, answer)
+        reason, q = check_ai(data, shown, main, answer)
+        if q in asked_q:
+            raise ValueError("전에 한 질문과 같음")
         out.update(question=q, reason=reason, source="exaone")
     except Exception as e:  # 시간 초과, 형식 오류, 검사 실패 → 정해진 문장
         out["error"] = str(e)

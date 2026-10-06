@@ -6,7 +6,8 @@
 1) 규칙이 답변의 문제를 '모두' 찾는다 (같은 답변이면 항상 같은 결과 → 검출 정확도를 평가할 수 있음)
    숫자가 자소서와 다름 / 자소서의 숫자를 말하지 않음 / 결과 수치 없음 / 본인 역할 없음 /
    '우리·팀' 위주라 본인 비중이 불분명 / 모호한 표현(사전 단어)
-2) EXAONE(Ollama)이 찾은 문제 중 하나를 고르거나(또는 더 중요한 다른 점을 골라) 꼬리질문을 쓴다.
+2) 숫자가 자소서와 다르거나 자소서 숫자를 말하지 않았으면 그 사실 확인 질문을 그대로 쓴다 (AI가 주제를 바꾸면 안 됨).
+   그 밖에는 EXAONE(Ollama)이 찾은 문제 중 하나를 고르거나(또는 더 중요한 다른 점을 골라) 꼬리질문을 쓴다.
    반드시 답변 속 문장을 그대로 인용하게 하고 코드로 검사한다
    (인용이 답변에 있음, 60자 이내, 존댓말 물음, 답변·자소서에 없는 숫자를 만들지 않음).
 3) 시간 안에 못 하거나 검사에 떨어지면 1)의 첫 번째 문제를 정해진 문장 틀로 묻는다 (항상 성공).
@@ -23,7 +24,8 @@ from question_gen import MODELS, _norm, ask_ollama, ollama_available
 
 TIME_BUDGET = 6.0   # AI에 쓸 최대 시간(초). 휴식 10초에서 받아쓰기 마무리 몫을 뺌
 MAX_LEN = 60
-ANSWER_CHARS = 800  # AI에 넣는 답변 길이 상한 (2분 답변 ≈ 600~800자)
+ANSWER_CHARS = 800
+FACT_CHECKS = {"mismatch", "missing_fact"}  # 자소서 사실 확인은 규칙 질문을 그대로 씀  # AI에 넣는 답변 길이 상한 (2분 답변 ≈ 600~800자)
 
 UNITS = r"(%|퍼센트|프로|개월|년|월|주|일|명|배|건|개|원|시간|분)"
 NUM_UNIT = re.compile(r"(\d+(?:[.,]\d+)?)\s*" + UNITS)
@@ -153,7 +155,7 @@ def generate_followup(main, answer, use_llm=True, ask_fn=None, model=None, budge
     issues = find_issues(main, answer)
     reason, q = template_question(issues)
     out = {"question": q, "reason": reason, "issues": [n for n, _ in issues], "source": "template", "error": None}
-    if not use_llm or not _norm(answer):
+    if not use_llm or not _norm(answer) or reason in FACT_CHECKS:
         return out
     if ask_fn is None:
         if not ollama_available():

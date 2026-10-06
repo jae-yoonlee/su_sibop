@@ -7,6 +7,7 @@ import followup_gen as fg
 MAIN = {"type": "경험", "question": "물류 프로젝트에서 맡은 일을 말해 주세요.",
         "evidence": "6개월 동안 팀장을 맡아 배송 지연률을 12% 줄였습니다."}
 ANSWER = "저희 팀이 함께 6개월 동안 지연률을 20% 줄였습니다. 우리가 열심히 노력했습니다."
+SOFT = "저희 팀이 함께 6개월 동안 지연률을 12% 줄였습니다. 우리가 열심히 노력했습니다."  # 숫자는 맞음
 
 
 def fake(reply, delay=0.0):
@@ -66,14 +67,14 @@ def test_no_issue_gives_generic():
 
 # ── AI가 고름 ──
 def test_ai_picks_issue_with_quote():
-    ask = fake({"pick": 2, "quote": "저희 팀이 함께", "question": "팀에서 본인이 직접 맡은 일은 무엇이었나요?"})
-    out = fg.generate_followup(MAIN, ANSWER, ask_fn=ask)
-    assert out["source"] == "exaone" and out["reason"] == "no_role"
+    ask = fake({"pick": 2, "quote": "열심히 노력했습니다", "question": "열심히 했다는 건 구체적으로 어떤 행동이었나요?"})
+    out = fg.generate_followup(MAIN, SOFT, ask_fn=ask)
+    assert out["source"] == "exaone" and out["reason"] == "vague"
 
 
 def test_ai_may_pick_other_point():
-    ask = fake({"pick": 0, "quote": "지연률을 20% 줄였습니다", "question": "지연률은 어떻게 측정하셨나요?"})
-    out = fg.generate_followup(MAIN, ANSWER, ask_fn=ask)
+    ask = fake({"pick": 0, "quote": "지연률을 12% 줄였습니다", "question": "지연률은 어떻게 측정하셨나요?"})
+    out = fg.generate_followup(MAIN, SOFT, ask_fn=ask)
     assert out["source"] == "exaone" and out["reason"] == "ai_other"
 
 
@@ -83,8 +84,8 @@ def test_prompt_lists_rule_findings():
     def ask(client, model, prompt):
         seen["p"] = prompt
         return "{}"
-    fg.generate_followup(MAIN, ANSWER, ask_fn=ask)
-    assert "1. 숫자가 자기소개서와 다름" in seen["p"] and "3. 모호한 표현" in seen["p"]
+    fg.generate_followup(MAIN, SOFT, ask_fn=ask)
+    assert "1. 본인이 한 일을 말하지 않음" in seen["p"] and "2. 모호한 표현" in seen["p"]
 
 
 def test_ai_rejected_cases_fall_back_to_template():
@@ -97,23 +98,28 @@ def test_ai_rejected_cases_fall_back_to_template():
         "JSON 아님",
     ]
     for reply in bad:
-        out = fg.generate_followup(MAIN, ANSWER, ask_fn=fake(reply))
-        assert out["source"] == "template" and out["reason"] == "mismatch", reply
+        out = fg.generate_followup(MAIN, SOFT, ask_fn=fake(reply))
+        assert out["source"] == "template" and out["reason"] == "no_role", reply
 
 
 def test_slow_ai_falls_back_within_budget():
     t0 = time.perf_counter()
-    out = fg.generate_followup(MAIN, ANSWER, ask_fn=fake({"pick": 1}, delay=1.0), budget=0.2)
+    out = fg.generate_followup(MAIN, SOFT, ask_fn=fake({"pick": 1}, delay=1.0), budget=0.2)
     assert out["source"] == "template" and "초과" in out["error"]
     assert time.perf_counter() - t0 < 0.8
 
 
 def test_ollama_off_falls_back(monkeypatch):
     monkeypatch.setattr(fg, "ollama_available", lambda: False)
-    out = fg.generate_followup(MAIN, ANSWER)
+    out = fg.generate_followup(MAIN, SOFT)
     assert out["source"] == "template" and "Ollama" in out["error"]
 
 
 def test_empty_answer_skips_ai():
     out = fg.generate_followup(MAIN, "", ask_fn=fake(RuntimeError("부르면 안 됨")))
     assert out["source"] == "template" and out["error"] is None
+
+
+def test_fact_mismatch_never_goes_to_ai():
+    out = fg.generate_followup(MAIN, ANSWER, ask_fn=fake(RuntimeError("부르면 안 됨")))
+    assert out["source"] == "template" and out["reason"] == "mismatch" and out["error"] is None

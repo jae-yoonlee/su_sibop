@@ -8,12 +8,19 @@ import { STATUS_ALERTS } from "./rules/gate";
 import { ALERT_LABELS, AnswerCoach, type AnswerStats } from "./rules/session";
 import { toDb } from "./rules/stats";
 import { VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
+import { GEMINI_MODEL } from "./prep/gemini";
+import { llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
+import { runPrep, type PrepState, type StepState } from "./prep/pipeline";
 
-// 1단계 체험판: 질문 생성(2단계)·꼬리질문(3단계) 전이라 기본 질문 2개로 진행 (question_gen.DEFAULT_QUESTIONS)
-const QUESTIONS = [
-  "가장 기억에 남는 프로젝트에서 맡은 역할과 기간을 구체적으로 말해 주세요.",
-  "팀원과 의견이 달랐던 적이 있다면 어떻게 해결했는지 말해 주세요.",
-];
+// 본질문 2개 (꼬리질문은 3단계에서). AI가 만든 질문 3개 중 앞의 2개를 쓰고 1개는 예비.
+const ROUNDS = 2;
+const MIN_CHARS = 30;
+const KEY_STORE = "sibop.geminiKey";
+const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+const store = {
+  get: (k: string) => { try { return localStorage.getItem(k) ?? ""; } catch { return ""; } },
+  set: (k: string, v: string) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch { /* 저장 안 돼도 이번 실행엔 지장 없음 */ } },
+};
 const READ_SENTENCE = "안녕하세요. 오늘 면접에서 제 경험을 차분하고 또렷하게 말씀드리겠습니다.";
 
 type Phase = "intro" | "loading" | "setup" | "ready" | "question" | "answer" | "result";
@@ -36,7 +43,12 @@ const S = {
   coach: null as AnswerCoach | null,
   results: [] as AnswerStats[],
   debug: false,
+  input: { posting: "", resume: "", geminiKey: store.get(KEY_STORE) },
+  prep: null as PrepState | null,
+  skipAi: false,
 };
+const curQ = () => S.prep?.questions[S.qIndex]?.question ?? "";
+const questionsReady = () => !!S.prep && (S.prep.done || S.skipAi);
 
 const now = () => performance.now() / 1000;
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => app.querySelector<T>(sel);
@@ -59,26 +71,48 @@ function render() {
   tickUi();
 }
 
+function llmChip(st: LlmState) {
+  if (st.kind === "loading") return `AI 준비 중 ${Math.round(st.progress * 100)}%`;
+  if (st.kind === "ready") return "AI 준비 완료";
+  if (st.kind === "unsupported") return "이 PC는 AI 대신 규칙 질문";
+  if (st.kind === "error") return "AI를 못 불러와 규칙 질문";
+  return "AI 확인 중";
+}
+
 function introHtml() {
+  const i = S.input;
   return `
   <div class="mesh"></div>
   <div class="page">
-    <nav class="nav"><div class="brand">면접<b>.</b>코치</div><span class="badge">1단계 체험판</span></nav>
+    <nav class="nav"><div class="brand">면접<b>.</b>코치</div><span class="chip" id="llm-chip">${llmChip(llmState)}</span></nav>
     <div class="wrap">
       <h1 class="display-xl">면접,<br/>실전처럼.</h1>
-      <p class="lead">카메라와 목소리를 실시간으로 보고, 답변하는 동안 바로 코칭해요. 영상과 소리는 이 브라우저 안에서만 분석하고 어디에도 보내지 않아요.</p>
+      <p class="lead">지원할 회사의 채용공고와 내 자소서를 넣으면, 회사가 원하는 역량을 정리하고 질문을 만들어요. 그동안 카메라와 목소리를 맞추고 바로 연습해요.</p>
+      <div class="inputs">
+        <label class="field"><span class="field-h">희망 회사 채용공고</span>
+          <span class="field-sub">채용 설명에 적힌 자격요건·우대사항·인재상을 그대로 붙여 넣어 주세요</span>
+          <textarea id="posting" rows="12" placeholder="예) 다양한 부서와 원활하게 협업하며 데이터를 바탕으로 문제를 해결할 분을 찾습니다.">${esc(i.posting)}</textarea></label>
+        <label class="field"><span class="field-h">내 자기소개서</span>
+          <span class="field-sub">이 PC 밖으로 보내지 않아요</span>
+          <textarea id="resume" rows="12" placeholder="자기소개서 전체를 붙여 넣어 주세요">${esc(i.resume)}</textarea></label>
+      </div>
+      <details class="keybox" ${i.geminiKey ? "" : "open"}><summary>Gemini 키 (선택)</summary>
+        <p>넣으면 채용공고를 Gemini(${GEMINI_MODEL})로 보내 필요역량을 더 정확히 정리해요. 키는 이 브라우저에만 저장돼요.
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">무료 키 받기</a></p>
+        <input id="gkey" type="password" autocomplete="off" placeholder="AIza…" value="${esc(i.geminiKey)}" />
+      </details>
       <div class="chips">
+        <span class="badge">채용공고만 Gemini로 전송 · 자소서·영상·소리는 이 PC 안에서만</span>
         <span class="chip">Chrome · Edge 권장</span>
         <span class="chip">컴퓨터 소리는 꺼 두기</span>
-        <span class="chip">밝은 곳에서</span>
       </div>
-      <button class="btn-green" id="go">카메라·마이크 켜기</button>
+      <button class="btn-green" id="go">분석 시작</button>
       ${S.error ? `<div class="err">${S.error}</div>` : ""}
       <div class="steps">
-        ${step(1, "자리 맞추기", "가운데 앉기, 렌즈 보기, 질문 화면 보기로 내 정면을 잡아요")}
-        ${step(2, "목소리 기준", "주변 소음을 재고, 문장을 읽어 내 목소리 크기를 기준으로 잡아요")}
-        ${step(3, "질문 2개", `질문을 ${QUESTION_SEC}초 보고 ${ANSWER_SEC}초 답해요. 그동안 실시간 알림이 떠요`)}
-        ${step(4, "결과", "어떤 경고를 몇 번, 얼마나 오래 받았는지 정리해요")}
+        ${step(1, "역량 정리", "채용공고에서 필요역량을 뽑고, 자소서에 근거가 있는지 확인해요")}
+        ${step(2, "질문 준비 + 자리 맞추기", "AI가 질문 3개를 만드는 동안 카메라와 목소리 기준을 맞춰요")}
+        ${step(3, `질문 ${ROUNDS}개`, `질문을 ${QUESTION_SEC}초 보고 ${ANSWER_SEC}초 답해요. 그동안 실시간 알림이 떠요`)}
+        ${step(4, "결과", "역량 일치와 경고를 정리해요")}
       </div>
     </div>
   </div>`;
@@ -120,23 +154,41 @@ function overlayHtml() {
         <div class="read" id="read" hidden>“${READ_SENTENCE}”</div>
         <div class="bar" id="setup-bar" hidden><i></i></div>
         <button class="btn-ghost-sm" id="redo">처음부터 다시</button>
-      </div>${meter}`;
+      </div>${prepCard()}${meter}`;
   }
   if (S.phase === "ready") {
     const warns = S.cam.warnings.map((w) => `<div>${SETUP_MESSAGES[w]}</div>`).join("");
+    if (!questionsReady())
+      return `<div class="setup-card"><div class="msg">세팅 완료! 질문을 마무리하고 있어요</div>
+        <div id="wait-ai"></div><button class="btn-ghost-sm" id="skip-ai">AI 기다리지 않고 규칙 질문으로 시작</button></div>${prepCard()}${meter}`;
     return `<button class="start" id="start">시작</button><div class="warn-list">${warns}</div>${meter}`;
   }
   // question / answer
-  const q = QUESTIONS[S.qIndex];
+  const q = esc(curQ());
   const label = S.phase === "question" ? "질문을 읽고 생각해 보세요" : "답변 중";
   return `
-    <div class="qslot"><div class="meta"><span class="badge">질문 ${S.qIndex + 1} / ${QUESTIONS.length}</span><span>${label}</span></div>
+    <div class="qslot"><div class="meta"><span class="badge">질문 ${S.qIndex + 1} / ${ROUNDS}</span><span>${label}</span></div>
       <p class="q">${q}</p></div>
     <div class="topbar"><div class="timer"><svg width="84" height="84"><circle cx="42" cy="42" r="36" stroke="rgba(255,255,255,.15)" stroke-width="8" fill="none"/>
       <circle id="ring" cx="42" cy="42" r="36" stroke="${S.phase === "question" ? "#fff" : "#5865f2"}" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="0"/></svg><span id="sec"></span></div></div>
     <div class="toasts"></div>
     <div class="bottom-actions"><button class="btn-ghost-sm" id="skip">${S.phase === "question" ? "바로 답변 시작" : "답변 끝내기"}</button></div>
     ${meter}`;
+}
+
+const STEP_ICON: Record<StepState, string> = { wait: "○", run: "◐", done: "✓", skip: "–", fail: "!" };
+function prepCard() {
+  const p = S.prep;
+  if (!p) return "";
+  const row = (st: StepState, label: string, note = "") =>
+    `<div class="prep-row ${st}"><b>${STEP_ICON[st]}</b><span>${label}${note ? `<small>${esc(note)}</small>` : ""}</span></div>`;
+  const ai = llmState.kind === "loading" && p.steps.questions === "run" ? ` (${Math.round(llmState.progress * 100)}%)` : "";
+  return `<div class="prep-card" id="prep-card">
+    ${row(p.steps.rules, "채용공고 단어 찾기")}
+    ${row(p.steps.gemini, "필요역량 정리 (Gemini)", p.note.gemini ?? (p.steps.gemini === "skip" ? "키 없음 → 규칙으로 정리" : ""))}
+    ${row(p.steps.resume, "자소서와 대조")}
+    ${row(p.done ? (p.questionsBy === "ai" ? "done" : "fail") : p.steps.questions, `질문 3개 만들기${ai}`, p.note.questions ?? "")}
+  </div>`;
 }
 
 function resultHtml() {
@@ -167,6 +219,7 @@ function resultHtml() {
       <div class="stat"><div class="v">${shown}</div><div class="k">화면에 띄운 알림</div></div>
       <div class="stat"><div class="v" style="font-size:32px;line-height:1.2">${top}</div><div class="k">가장 많이 받은 경고</div></div>
     </div>
+    ${coverageHtml()}
     <div class="card-dark">
       <h2 style="margin-top:0">경고별 누적</h2>
       <table><tr><th>경고</th><th>횟수</th><th>지속 시간</th><th>화면 알림</th></tr>
@@ -179,17 +232,62 @@ function resultHtml() {
     <div class="actions">
       <button class="btn-primary" id="download">결과 저장 (JSON)</button>
       <button class="btn-green" id="again">다시 하기</button>
+      <button class="btn-ghost" id="new-input">자료 새로 넣기</button>
     </div>
     <details><summary>측정 정보 (테스트용)</summary><pre>${JSON.stringify(
       { face: S.delegate, fps: Math.round(S.fps), mic: { autoGainControl: settings.autoGainControl, noiseSuppression: settings.noiseSuppression, sampleRate: settings.sampleRate },
+        prep: S.prep && { timings: S.prep.timings, requiredBy: S.prep.requiredBy, questionsBy: S.prep.questionsBy, llm: llmState.kind, notes: S.prep.note },
         noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), camera: S.cam.warnings, ua: navigator.userAgent }, null, 2)}</pre></details>
   </div></div>`;
+}
+
+function coverageHtml() {
+  const p = S.prep;
+  if (!p?.coverage.length) return "";
+  const hit = p.coverage.filter((c) => c.found.length).length;
+  return `<div class="card-dark" style="margin-bottom:16px">
+    <h2 style="margin-top:0">필요역량 ↔ 자소서 <span class="badge">${hit} / ${p.coverage.length} 근거 있음</span></h2>
+    <table><tr><th>필요역량</th><th>공고 근거</th><th>자소서에서 찾은 단어</th></tr>
+    ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? esc(c.found.join(", ")) : "<span style='color:var(--magenta)'>근거 없음</span>"}</td></tr>`).join("")}
+    </table>
+    <p style="opacity:.75;font-size:14px">정리: ${p.requiredBy === "gemini" ? "Gemini + 규칙" : "규칙 사전(NCS 직업기초능력)"} · 질문: ${p.questionsBy === "ai" ? "브라우저 안 AI" : "규칙"}. 답변과의 비교는 다음 단계에서 붙어요.</p>
+    <h3>받은 질문</h3><ol>${p.questions.slice(0, ROUNDS).map((q) => `<li>${esc(q.question)}</li>`).join("")}</ol>
+  </div>`;
 }
 
 // ── 이벤트 ─────────────────────────────────────────────
 
 function bindPage() {
-  $("#go")?.addEventListener("click", start);
+  $("#go")?.addEventListener("click", () => {
+    const posting = ($<HTMLTextAreaElement>("#posting")?.value ?? "").trim();
+    const resume = ($<HTMLTextAreaElement>("#resume")?.value ?? "").trim();
+    const geminiKey = ($<HTMLInputElement>("#gkey")?.value ?? "").trim();
+    S.input = { posting, resume, geminiKey };
+    if (posting.length < MIN_CHARS || resume.length < MIN_CHARS) {
+      S.error = `채용공고와 자소서를 각각 ${MIN_CHARS}자 이상 넣어 주세요.`;
+      return render();
+    }
+    store.set(KEY_STORE, geminiKey);
+    S.skipAi = false;
+    S.prep = runPrep(S.input, (p) => {
+      S.prep = p;
+      if (S.phase === "ready" || (S.phase === "setup" && !$("#prep-card"))) return render();
+      const card = $("#prep-card");
+      if (card) card.outerHTML = prepCard();
+    });
+    void start();
+  });
+  $("#new-input")?.addEventListener("click", () => {
+    S.results = [];
+    S.qIndex = 0;
+    S.prep = null;
+    S.mic?.stop();
+    (S.video?.srcObject as MediaStream | null)?.getTracks().forEach((t) => t.stop());
+    S.video = null;
+    S.cam = new CameraSetup();
+    S.voice = new VoiceSetup();
+    go("intro");
+  });
   $("#again")?.addEventListener("click", () => {
     S.results = [];
     S.qIndex = 0;
@@ -211,6 +309,10 @@ function bindOverlay() {
     render();
   });
   $("#start")?.addEventListener("click", () => go("question"));
+  $("#skip-ai")?.addEventListener("click", () => {
+    S.skipAi = true;
+    render();
+  });
   $("#skip")?.addEventListener("click", () => (S.phase === "question" ? go("answer") : endAnswer()));
 }
 
@@ -227,7 +329,7 @@ function go(phase: Phase) {
   if (phase === "answer") {
     const base = { box: S.cam.baseBox!, gazeStd: S.cam.baseGazeStd };
     const v = S.voice;
-    S.coach = new AnswerCoach(base, { noiseRms: v.noiseRms!, noiseDb: v.noiseDb!, voiceDb: v.voiceDb! }, S.phaseAt, QUESTIONS[S.qIndex]);
+    S.coach = new AnswerCoach(base, { noiseRms: v.noiseRms!, noiseDb: v.noiseDb!, voiceDb: v.voiceDb! }, S.phaseAt, curQ());
   }
   render();
 }
@@ -236,7 +338,7 @@ function endAnswer() {
   if (!S.coach) return;
   S.results.push(S.coach.finish(now()));
   S.coach = null;
-  if (S.qIndex + 1 < QUESTIONS.length) {
+  if (S.qIndex + 1 < ROUNDS) {
     S.qIndex++;
     go("question");
   } else go("result");
@@ -362,4 +464,12 @@ setInterval(() => {
   if (S.phase === "question" || S.phase === "answer") tickUi();
 }, 250);
 
+// 입력 화면을 여는 순간 AI 모델을 받기 시작 (입력하는 동안 받음)
+onLlmState((st) => {
+  const chip = $("#llm-chip");
+  if (chip) chip.textContent = llmChip(st);
+  const card = $("#prep-card");
+  if (card && st.kind === "loading") card.outerHTML = prepCard();
+});
+void preloadLlm();
 render();

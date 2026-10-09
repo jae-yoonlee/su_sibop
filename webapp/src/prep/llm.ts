@@ -36,6 +36,13 @@ async function pickModel(): Promise<string | null> {
   return adapter.features.has("shader-f16") ? "Qwen3-1.7B-q4f16_1-MLC" : "Qwen3-1.7B-q4f32_1-MLC";
 }
 
+/** 모델 하나를 별도 스레드에 띄운다 (검증 페이지에서도 모델을 바꿔 가며 씀) */
+export async function createEngine(id: string, onProgress: (r: InitProgressReport) => void): Promise<WebWorkerMLCEngine> {
+  const { CreateWebWorkerMLCEngine } = await import("@mlc-ai/web-llm"); // 첫 화면을 가볍게: 필요할 때 따로 받음
+  const worker = new Worker(new URL("./llm.worker.ts", import.meta.url), { type: "module" });
+  return CreateWebWorkerMLCEngine(worker, id, { initProgressCallback: onProgress });
+}
+
 /** 모델을 미리 받아 둔다. 여러 번 불러도 한 번만 받는다. */
 export function preloadLlm(): Promise<WebWorkerMLCEngine | null> {
   if (loading) return loading;
@@ -48,11 +55,7 @@ export function preloadLlm(): Promise<WebWorkerMLCEngine | null> {
     modelId = id;
     set({ kind: "loading", progress: 0, text: "AI 준비 시작" });
     try {
-      const { CreateWebWorkerMLCEngine } = await import("@mlc-ai/web-llm"); // 첫 화면을 가볍게: 필요할 때 따로 받음
-      const worker = new Worker(new URL("./llm.worker.ts", import.meta.url), { type: "module" });
-      engine = await CreateWebWorkerMLCEngine(worker, id, {
-        initProgressCallback: (r: InitProgressReport) => set({ kind: "loading", progress: r.progress, text: r.text }),
-      });
+      engine = await createEngine(id, (r) => set({ kind: "loading", progress: r.progress, text: r.text }));
       set({ kind: "ready", model: id });
       return engine;
     } catch (e) {
@@ -66,6 +69,11 @@ export function preloadLlm(): Promise<WebWorkerMLCEngine | null> {
 export async function aiQuestions(resume: string, coverage: Coverage[]): Promise<string> {
   const e = await preloadLlm();
   if (!e) throw new Error("AI를 쓸 수 없어요");
+  return generateQuestions(e, resume, coverage);
+}
+
+/** 앱과 검증 페이지가 같은 프롬프트·설정을 쓰도록 한 곳에 둔다 */
+export async function generateQuestions(e: WebWorkerMLCEngine, resume: string, coverage: Coverage[]): Promise<string> {
   const res = await e.chat.completions.create({
     messages: [{ role: "user", content: questionPrompt(resume, coverage) }],
     temperature: 0.7,

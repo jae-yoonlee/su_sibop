@@ -1,0 +1,22 @@
+{
+  "name": "sibop-webapp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/copy-wasm.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-wasm.mjs",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.21"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite": "6.4.4",
+    "vitest": "3.2.7"
+  }
+}

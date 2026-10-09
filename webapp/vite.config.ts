@@ -1,0 +1,6 @@
+import { defineConfig } from "vite";
+
+// GitHub Pages 주소가 https://<계정>.github.io/su_sibop/ 이라 기본 경로를 맞춘다. 로컬 개발은 "/".
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? process.env.BASE_PATH ?? "/su_sibop/" : "/",
+}));

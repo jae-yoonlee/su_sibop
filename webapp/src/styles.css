@@ -136,3 +136,29 @@ pre { white-space: pre-wrap; font: 12px/1.5 var(--num); }
   .topbar { top: auto; bottom: 24px; right: 16px; }
   .qslot { padding: 16px 20px; }
 }
+
+/* ── 자료 입력 */
+.inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; background: var(--surface-indigo); border-radius: var(--r-xl); padding: 24px; }
+.field-h { font: 700 22px/1.2 var(--display); }
+.field-sub { font-size: 14px; opacity: 0.75; }
+.field textarea, .keybox input { width: 100%; background: rgba(0, 0, 0, 0.25); color: #fff; border: 2px solid transparent; border-radius: var(--r-lg);
+  padding: 14px 16px; font: 400 16px/1.5 "Pretendard Variable", Pretendard, system-ui, sans-serif; resize: vertical; }
+.field textarea:focus, .keybox input:focus { outline: none; border-color: var(--primary); }
+.keybox { background: var(--surface-indigo); border-radius: var(--r-lg); padding: 16px 20px; margin: 0 0 24px; }
+.keybox p { font-size: 14px; opacity: 0.85; }
+.keybox a { color: var(--link); }
+.keybox input { max-width: 480px; }
+.prep-card { position: absolute; left: 24px; top: 24px; width: min(340px, calc(100% - 48px)); background: rgba(30, 35, 83, 0.9);
+  border-radius: var(--r-lg); padding: 14px 16px; display: grid; gap: 6px; font-size: 14px; }
+.prep-row { display: flex; gap: 8px; align-items: baseline; }
+.prep-row b { width: 16px; text-align: center; }
+.prep-row small { display: block; opacity: 0.75; font-size: 12px; }
+.prep-row.done b { color: var(--green); }
+.prep-row.run b { color: var(--link); }
+.prep-row.fail b { color: var(--magenta); }
+.prep-row.wait, .prep-row.skip { opacity: 0.6; }
+@media (max-width: 768px) {
+  .inputs { grid-template-columns: 1fr; }
+  .prep-card { top: auto; bottom: 230px; }
+}

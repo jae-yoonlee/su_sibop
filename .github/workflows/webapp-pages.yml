@@ -5,9 +5,9 @@ name: webapp-pages
 on:
   push:
     branches: [main]
-    paths: ["webapp/**", ".github/workflows/webapp-pages.yml"]
+    paths: ["webapp/**", "data/eval/**", ".github/workflows/webapp-pages.yml"]
   pull_request:
-    paths: ["webapp/**", ".github/workflows/webapp-pages.yml"]
+    paths: ["webapp/**", "data/eval/**", ".github/workflows/webapp-pages.yml"]
   workflow_dispatch:
 
 permissions:

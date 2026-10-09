@@ -6,7 +6,8 @@ import { runPrep, type PrepState } from "./pipeline";
 
 const POSTING = `[자격요건] 다양한 부서와 원활하게 협업할 수 있는 분.
 데이터 분석을 바탕으로 문제를 해결하고 개선안을 제시할 수 있는 분.
-[인재상] 동료와 사이좋게 지내며 책임감 있게 일하는 사람.`;
+[인재상] 동료와 사이좋게 지내며 책임감 있게 일하는 사람.
+고객 앞에서 발표하고 설득하는 일이 많습니다.`;
 const RESUME = `저는 2023년 3월부터 6개월 동안 캡스톤 프로젝트에서 팀장을 맡았습니다.
 팀원 4명과 협업하며 일정 관리를 담당했고, 사용자 이탈률을 30% 줄였습니다.
 새로운 기술을 배우는 것을 좋아합니다.`;
@@ -23,10 +24,11 @@ describe("역량 규칙", () => {
     expect(findCompetencies("동료와 사이좋게 지냈으면 좋겠어요").map((h) => h.id)).toContain("interpersonal");
   });
 
-  it("자소서 대조: 협업은 근거 있음, 책임감은 근거 없음", () => {
+  it("자소서 대조: 협업·책임감(맡았·담당)은 근거 있음, 의사소통은 근거 없음", () => {
     const cov = checkResume(requiredFromRules(POSTING), RESUME);
     expect(cov.find((c) => c.name === "대인관계·협업")!.found).toContain("협업");
-    expect(cov.find((c) => c.name === "직업윤리·책임감")!.found).toEqual([]);
+    expect(cov.find((c) => c.name === "직업윤리·책임감")!.found).toContain("담당");
+    expect(cov.find((c) => c.name === "의사소통")!.found).toEqual([]);
   });
 });
 
@@ -44,7 +46,7 @@ describe("질문", () => {
   it("규칙 질문 3개: 자소서 문장 인용 + 근거 없는 역량 질문", () => {
     expect(fallback).toHaveLength(3);
     expect(fallback[0].question).toContain("자기소개서에");
-    expect(fallback[1].question).toMatch(/책임감|문제해결/);
+    expect(fallback[1].question).toContain("의사소통");
     expect(fallback[1].question).toMatch(/을|를/);
   });
 

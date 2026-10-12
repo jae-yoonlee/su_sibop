@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkResume, findCompetencies, requiredFromRules } from "./competency";
 import { parseRequired } from "./gemini";
-import { parseAiQuestions, ruleQuestions } from "./questions";
+import { parseAiQuestions, questionPrompt, questionSlots, ruleQuestions } from "./questions";
 import { runPrep, type PrepState } from "./pipeline";
 
 const POSTING = `[자격요건] 다양한 부서와 원활하게 협업할 수 있는 분.
@@ -50,17 +50,21 @@ describe("질문", () => {
     expect(fallback[1].question).toMatch(/을|를/);
   });
 
-  it("AI 답 검사: 자소서에 없는 근거는 버리고 규칙 질문으로 채움", () => {
+  it("근거 문장은 규칙이 고름: 경험=숫자+역할 문장, 서로 다른 문장", () => {
+    const slots = questionSlots(RESUME, cov);
+    expect(slots[0].evidence).toContain("팀장");
+    expect(new Set(slots.map((s) => s.evidence)).size).toBe(3);
+    expect(slots[1].competency).toBe("의사소통");
+    expect(questionPrompt(RESUME, cov)).not.toContain("새로운 기술을 배우는 것을 좋아합니다.\n저는"); // 자소서 전체를 넣지 않음
+  });
+
+  it("AI 답 검사: 지어낸 숫자·물음이 아닌 문장은 규칙 질문으로, 근거는 규칙이 고른 문장", () => {
     const text = JSON.stringify({
-      questions: [
-        { type: "경험", question: "팀장으로서 6개월 동안 맡은 역할을 말씀해 주세요.", evidence: "저는 2023년 3월부터 6개월 동안 캡스톤 프로젝트에서 팀장을 맡았습니다." },
-        { type: "직무", question: "해외 인턴 경험에서 배운 점은 무엇인가요?", evidence: "해외 인턴을 했습니다." },
-        { type: "상황", question: "팀원과 갈등이 생기면 어떻게 하시겠어요?", evidence: "" },
-      ],
+      questions: ["캡스톤 프로젝트 6개월 동안 팀장으로서 맡은 역할을 말씀해 주세요.", "해외 인턴 12개월 경험에서 배운 점은 무엇인가요?", "팀원과 협업하다 갈등이 생겼을 때 어떻게 하셨나요?"],
     });
     const { questions, aiCount } = parseAiQuestions(`<think>\n\n</think>\n${text}`, RESUME, fallback);
     expect(aiCount).toBe(2);
-    expect(questions[0].source).toBe("ai");
+    expect(questions[0]).toMatchObject({ source: "ai", evidence: fallback[0].evidence });
     expect(questions[1]).toEqual(fallback[1]);
     expect(questions[2].source).toBe("ai");
   });

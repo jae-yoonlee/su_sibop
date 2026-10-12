@@ -102,11 +102,11 @@ function render() {
       ${S.device.gpu !== "ok" && S.device.gpu !== "확인 중" ? `<p class="warn">이 브라우저에서는 그래픽 가속(WebGPU)을 쓸 수 없어 AI 측정이 안 됩니다 (규칙 질문만 만들어집니다). 최신 Chrome이나 Edge로 열어 주세요.</p>` : ""}
       ${S.log.length ? `<pre class="log">${esc(S.log.slice(-12).join("\n"))}</pre>` : ""}
       ${sum.length ? `
-      <table><thead><tr><th>모델</th><th>실행</th><th>불러오기</th><th>JSON 성공</th><th>AI 질문 채택</th><th>근거 문장 정확 복사</th><th>생성 시간(중간값)</th><th>최대</th><th>${AI_DEADLINE_SEC}초 안</th></tr></thead><tbody>
+      <table><thead><tr><th>모델</th><th>실행</th><th>불러오기</th><th>JSON 성공</th><th>AI 질문 채택</th><th>근거 반영</th><th>생성 시간(중간값)</th><th>최대</th><th>${AI_DEADLINE_SEC}초 안</th></tr></thead><tbody>
       ${sum.map((r) => `<tr><td>${esc(r.model)}</td><td>${r.runs}</td><td>${r.model === "규칙" ? "-" : sec(S.loadMs[r.model])}</td><td>${r.model === "규칙" ? "-" : pct(r.jsonRate)}</td><td>${r.model === "규칙" ? "-" : pct(r.aiRate)}</td><td>${r.model === "규칙" ? "-" : pct(r.evidenceRate)}</td><td>${sec(r.medianMs)}</td><td>${sec(r.maxMs)}</td><td>${pct(r.inDeadline)}</td></tr>`).join("")}
       ${Object.entries(S.errors).map(([m, e]) => `<tr><td>${esc(m)}</td><td colspan="8" class="warn">실패: ${esc(e)}</td></tr>`).join("")}
       </tbody></table>
-      <p class="muted">AI 질문 채택 = 질문 3개 중 형식·근거 검사를 통과해 앱에서 실제로 쓰였을 비율. 나머지는 규칙 질문으로 대체됩니다.</p>
+      <p class="muted">AI 질문 채택 = 질문 3개 중 형식 검사를 통과해 앱에서 실제로 쓰였을 비율 (나머지는 규칙 질문). 근거 반영 = 규칙이 골라 준 자소서 문장의 내용을 AI 질문이 실제로 쓴 비율.</p>
       <div class="btns">
         <button class="btn-primary" id="dlsum">요약 CSV</button>
         <button class="btn-primary" id="dlsheet">사람 채점지 CSV (모델 숨김)</button>
@@ -164,7 +164,7 @@ function bind() {
     ]));
   });
   $("dlsum")?.addEventListener("click", () => {
-    const head = ["모델", "실행 수", "불러오기(초)", "JSON 성공", "AI 질문 채택", "근거 정확 복사", "생성 중간값(초)", "최대(초)", `${AI_DEADLINE_SEC}초 안`, "PC"];
+    const head = ["모델", "실행 수", "불러오기(초)", "JSON 성공", "AI 질문 채택", "근거 반영", "생성 중간값(초)", "최대(초)", `${AI_DEADLINE_SEC}초 안`, "PC"];
     download(`질문모델_요약_${stamp()}.csv`, csv([head, ...summarize(S.runs, AI_DEADLINE_SEC * 1000).map((r) => [
       r.model, r.runs, r.model === "규칙" ? "" : ((S.loadMs[r.model] ?? NaN) / 1000).toFixed(1), pct(r.jsonRate), pct(r.aiRate), pct(r.evidenceRate),
       (r.medianMs / 1000).toFixed(1), (r.maxMs / 1000).toFixed(1), pct(r.inDeadline), S.device.text,

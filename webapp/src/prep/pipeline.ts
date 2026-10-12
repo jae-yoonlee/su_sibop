@@ -4,7 +4,9 @@ import { summarizeRequired } from "./gemini";
 import { aiQuestions, preloadLlm } from "./llm";
 import { parseAiQuestions, ruleQuestions, type Question } from "./questions";
 
-export const AI_DEADLINE_SEC = 60; // 분석 시작 후 이 시간 안에 AI 질문이 안 나오면 규칙 질문으로 시작
+// 목표 시간 (검증 페이지 기준). 자소서 질문은 로컬 AI가 꼭 쓰도록(2026-10-12 결정) 시간이 지나도 규칙으로 넘기지 않고 기다린다.
+// 규칙 질문은 AI를 아예 못 쓸 때(그래픽 가속 없음·오류)만, 화면에 그렇게 표시하고 쓴다.
+export const AI_DEADLINE_SEC = 60;
 
 export interface PrepInput {
   posting: string;
@@ -58,13 +60,6 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
     s.timings.questions = sec();
     emit();
   };
-  setTimeout(() => {
-    if (!s.done) {
-      s.note.questions = `${AI_DEADLINE_SEC}초 안에 AI 질문이 안 나와 규칙 질문을 써요`;
-      finish("rules");
-    }
-  }, AI_DEADLINE_SEC * 1000);
-
   (async () => {
     // 2) Gemini: 채용공고만 보냄
     if (input.geminiKey) {
@@ -96,11 +91,16 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
       const engine = await preloadLlm();
       if (!engine) throw new Error("이 PC에서는 AI를 쓸 수 없어 규칙 질문을 써요");
       s.timings.model = sec();
-      const text = await aiQuestions(input.resume, s.coverage);
-      if (s.done) return; // 이미 마감
-      const { questions, aiCount } = parseAiQuestions(text, input.resume, ruleQuestions(input.resume, s.coverage));
+      const fallback = ruleQuestions(input.resume, s.coverage);
+      let { questions, aiCount } = parseAiQuestions(await aiQuestions(input.resume, s.coverage), input.resume, fallback);
+      if (aiCount < 3) {
+        // 검사에 떨어진 자리만 한 번 더 받아 채운다
+        const again = parseAiQuestions(await aiQuestions(input.resume, s.coverage), input.resume, fallback);
+        questions = questions.map((q, i) => (q.source === "ai" ? q : again.questions[i]));
+        aiCount = questions.filter((q) => q.source === "ai").length;
+      }
       s.questions = questions;
-      if (aiCount < 3) s.note.questions = `AI 질문 ${aiCount}개 + 규칙 질문 ${3 - aiCount}개`;
+      if (aiCount < 3) s.note.questions = `AI 질문 ${aiCount}개 + 규칙 질문 ${3 - aiCount}개 (AI 답이 검사에 두 번 떨어진 자리)`;
       finish(aiCount ? "ai" : "rules");
     } catch (e) {
       s.note.questions = (e as Error).message;

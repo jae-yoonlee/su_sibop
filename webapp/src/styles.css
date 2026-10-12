@@ -172,3 +172,6 @@ pre { white-space: pre-wrap; font: 12px/1.5 var(--num); }
 .stt-check.bad { border-left-color: var(--magenta); }
 .stt-check .btn-ghost-sm { justify-self: start; }
 .transcript { font-size: 14px; opacity: 0.85; }
+.badge.follow { background: var(--blurple, #5865f2); margin-left: 6px; }
+.asked { font-size: 15px; }
+.asked small { display: block; opacity: 0.7; font-size: 13px; margin-top: 4px; }

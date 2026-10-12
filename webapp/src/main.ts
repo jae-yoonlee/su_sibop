@@ -2,6 +2,8 @@ import "./styles.css";
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { createLandmarker, openCamera, runFaceLoop, type FrameResult } from "./media/camera";
 import { openMic, type Mic } from "./media/mic";
+import { accuracy } from "./media/cer";
+import { STT_MODE_TEXT, sttMode, Transcriber, type SttMode } from "./media/stt";
 import { CameraSetup, SETUP_MESSAGES } from "./rules/cameraSetup";
 import { ANSWER_SEC, QUESTION_SEC } from "./rules/constants";
 import { STATUS_ALERTS } from "./rules/gate";
@@ -46,6 +48,11 @@ const S = {
   input: { posting: "", resume: "", geminiKey: store.get(KEY_STORE) },
   prep: null as PrepState | null,
   skipAi: false,
+  sttMode: "none" as SttMode,
+  stt: null as Transcriber | null,
+  sttCheck: null as { text: string; acc: number; error: string } | null, // 문장 읽기 받아쓰기 결과
+  readAttempt: -1,
+  transcripts: [] as string[], // 질문별 답변 받아쓰기
 };
 const curQ = () => S.prep?.questions[S.qIndex]?.question ?? "";
 const questionsReady = () => !!S.prep && (S.prep.done || S.skipAi);
@@ -102,7 +109,8 @@ function introHtml() {
         <input id="gkey" type="password" autocomplete="off" placeholder="AIza…" value="${esc(i.geminiKey)}" />
       </details>
       <div class="chips">
-        <span class="badge">채용공고만 Gemini로 전송 · 자소서·영상·소리는 이 PC 안에서만</span>
+        <span class="badge">채용공고만 Gemini로 전송 · 자소서·영상은 이 PC 안에서만</span>
+        <span class="chip" id="stt-chip">${STT_MODE_TEXT[S.sttMode]}</span>
         <span class="chip">Chrome · Edge 권장</span>
         <span class="chip">컴퓨터 소리는 꺼 두기</span>
       </div>
@@ -133,6 +141,18 @@ function setupStepKey(): string {
   return S.cam.active ? S.cam.step : S.voice.active ? S.voice.step : "done";
 }
 
+function sttCheckHtml() {
+  if (S.sttMode === "none") return `<div class="stt-check"><b>받아쓰기 안 됨</b><span>${STT_MODE_TEXT.none}</span></div>`;
+  const c = S.sttCheck;
+  if (!c) return "";
+  const tone = c.acc >= 85 ? "ok" : c.acc >= 60 ? "mid" : "bad";
+  return `<div class="stt-check ${tone}"><b>받아쓰기 확인 ${c.acc}%</b>
+    <span>들린 문장: “${esc(c.text || "(아무것도 못 알아들음)")}”</span>
+    ${c.error ? `<span>받아쓰기 오류: ${esc(c.error === "network" ? "인터넷 연결 문제로 받아쓰기 서버에 닿지 못함" : c.error === "not-allowed" ? "마이크 권한이 막힘" : c.error)}</span>` : ""}
+    <span>${c.acc >= 85 ? "잘 받아쓰고 있어요" : "정확도가 낮아요. 마이크를 가까이 하고 또박또박 다시 읽어 보세요"} · ${STT_MODE_TEXT[S.sttMode]}</span>
+    <button class="btn-ghost-sm" id="reread">문장 다시 읽기</button></div>`;
+}
+
 function overlayHtml() {
   const meter = `<div class="meter"><i></i><b></b></div><div class="debug" ${S.debug ? "" : "hidden"}></div>`;
   if (S.phase === "loading") {
@@ -161,7 +181,7 @@ function overlayHtml() {
     if (!questionsReady())
       return `<div class="setup-card"><div class="msg">세팅 완료! 질문을 마무리하고 있어요</div>
         <div id="wait-ai"></div><button class="btn-ghost-sm" id="skip-ai">AI 기다리지 않고 규칙 질문으로 시작</button></div>${prepCard()}${meter}`;
-    return `<button class="start" id="start">시작</button><div class="warn-list">${warns}</div>${meter}`;
+    return `<button class="start" id="start">시작</button><div class="warn-list">${warns}</div>${sttCheckHtml()}${meter}`;
   }
   // question / answer
   const q = esc(curQ());
@@ -206,7 +226,8 @@ function resultHtml() {
   const shown = rows.reduce((a, r) => a + r.shown, 0);
   const top = rows[0]?.label ?? "없음";
   const perQ = S.results
-    .map((r, i) => `<tr><td>질문 ${i + 1}</td><td>${r.durationS}초</td><td>${r.alerts.map((a) => `${a.label} ${a.count}`).join(", ") || "경고 없음"}</td></tr>`)
+    .map((r, i) => `<tr><td>질문 ${i + 1}</td><td>${r.durationS}초</td><td>${r.alerts.map((a) => `${a.label} ${a.count}`).join(", ") || "경고 없음"}</td></tr>
+      <tr><td colspan="3" class="transcript">${S.sttMode === "none" ? "받아쓰기 안 됨" : S.transcripts[i] === undefined ? "받아쓰는 중…" : esc(S.transcripts[i] || "(받아쓴 내용 없음)")}</td></tr>`)
     .join("");
   const settings = S.mic?.settings ?? {};
   return `
@@ -237,7 +258,7 @@ function resultHtml() {
     <details><summary>측정 정보 (테스트용)</summary><pre>${JSON.stringify(
       { face: S.delegate, fps: Math.round(S.fps), mic: { autoGainControl: settings.autoGainControl, noiseSuppression: settings.noiseSuppression, sampleRate: settings.sampleRate },
         prep: S.prep && { timings: S.prep.timings, requiredBy: S.prep.requiredBy, questionsBy: S.prep.questionsBy, llm: llmState.kind, notes: S.prep.note },
-        noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), camera: S.cam.warnings, ua: navigator.userAgent }, null, 2)}</pre></details>
+        noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), stt: { mode: S.sttMode, check: S.sttCheck }, camera: S.cam.warnings, ua: navigator.userAgent }, null, 2)}</pre></details>
   </div></div>`;
 }
 
@@ -279,6 +300,7 @@ function bindPage() {
   });
   $("#new-input")?.addEventListener("click", () => {
     S.results = [];
+    S.transcripts = [];
     S.qIndex = 0;
     S.prep = null;
     S.mic?.stop();
@@ -290,13 +312,14 @@ function bindPage() {
   });
   $("#again")?.addEventListener("click", () => {
     S.results = [];
+    S.transcripts = [];
     S.qIndex = 0;
     S.cam = new CameraSetup();
     S.voice = new VoiceSetup();
     go("setup");
   });
   $("#download")?.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), results: S.results }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, transcript: S.transcripts[i] ?? "" })) }, null, 2)], { type: "application/json" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `면접코치-${Date.now()}.json` });
     a.click();
   });
@@ -306,9 +329,16 @@ function bindOverlay() {
   $("#redo")?.addEventListener("click", () => {
     S.cam = new CameraSetup();
     S.voice = new VoiceSetup();
+    S.readAttempt = -1;
+    S.sttCheck = null;
     render();
   });
   $("#start")?.addEventListener("click", () => go("question"));
+  $("#reread")?.addEventListener("click", () => {
+    S.voice = new VoiceSetup();
+    S.sttCheck = null;
+    go("setup");
+  });
   $("#skip-ai")?.addEventListener("click", () => {
     S.skipAi = true;
     render();
@@ -330,12 +360,26 @@ function go(phase: Phase) {
     const base = { box: S.cam.baseBox!, gazeStd: S.cam.baseGazeStd };
     const v = S.voice;
     S.coach = new AnswerCoach(base, { noiseRms: v.noiseRms!, noiseDb: v.noiseDb!, voiceDb: v.voiceDb! }, S.phaseAt, curQ());
+    startStt();
   }
   render();
 }
 
+function startStt() {
+  S.stt?.stop(0);
+  S.stt = new Transcriber(S.sttMode);
+  S.stt.start();
+}
+
 function endAnswer() {
   if (!S.coach) return;
+  const qi = S.qIndex;
+  const stt = S.stt;
+  S.stt = null;
+  void stt?.stop().then((text) => {
+    S.transcripts[qi] = text;
+    if (S.phase === "result") render();
+  });
   S.results.push(S.coach.finish(now()));
   S.coach = null;
   if (S.qIndex + 1 < ROUNDS) {
@@ -398,12 +442,31 @@ function onRms(rms: number) {
   if (S.phase === "setup" && !S.cam.active && S.voice.active) {
     const before = S.voice.step;
     S.voice.feed(t, rms);
+    // 문장 읽기가 시작되거나 다시 읽을 때마다 받아쓰기도 새로 시작
+    if (S.voice.step === "voice" && S.readAttempt !== S.voice.attempt) {
+      S.readAttempt = S.voice.attempt;
+      startStt();
+    }
     if (S.voice.step !== before) {
-      if (!S.voice.active) return go("ready");
+      if (!S.voice.active) {
+        finishReadCheck();
+        return go("ready");
+      }
       return render();
     }
   }
   if (S.phase === "answer") S.coach?.onAudio(t, rms);
+}
+
+function finishReadCheck() {
+  const stt = S.stt;
+  S.stt = null;
+  S.readAttempt = -1;
+  if (!stt) return;
+  void stt.stop().then((text) => {
+    S.sttCheck = { text, acc: accuracy(READ_SENTENCE, text), error: stt.error };
+    if (S.phase === "ready") render();
+  });
 }
 
 // 시간·글자·막대만 갱신 (DOM 전체를 다시 그리지 않음)
@@ -472,4 +535,9 @@ onLlmState((st) => {
   if (card && st.kind === "loading") card.outerHTML = prepCard();
 });
 void preloadLlm();
+void sttMode().then((m) => {
+  S.sttMode = m;
+  const chip = $("#stt-chip");
+  if (chip) chip.textContent = STT_MODE_TEXT[m];
+});
 render();

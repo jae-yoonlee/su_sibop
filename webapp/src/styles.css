@@ -162,3 +162,13 @@ pre { white-space: pre-wrap; font: 12px/1.5 var(--num); }
   .inputs { grid-template-columns: 1fr; }
   .prep-card { top: auto; bottom: 230px; }
 }
+
+/* 받아쓰기 확인 (세팅 끝난 뒤 시작 화면) */
+.stt-check { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); width: min(640px, calc(100% - 32px)); display: grid; gap: 6px;
+  background: rgba(30, 35, 83, 0.92); border-radius: var(--r-lg); padding: 14px 18px; font-size: 15px; border-left: 6px solid var(--primary); }
+.stt-check b { font-size: 18px; }
+.stt-check.ok { border-left-color: var(--green); }
+.stt-check.mid { border-left-color: #f5c542; }
+.stt-check.bad { border-left-color: var(--magenta); }
+.stt-check .btn-ghost-sm { justify-self: start; }
+.transcript { font-size: 14px; opacity: 0.85; }

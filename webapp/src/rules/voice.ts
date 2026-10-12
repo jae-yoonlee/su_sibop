@@ -2,7 +2,7 @@
 import {
   BLOCK_SEC, MIN_ON_SEC, NOISE_HOLD_SEC, NOISE_MAX_DB, NOISE_PERCENTILE, NOISE_RISE_DB, NOISE_SETUP_SEC, NOISE_WINDOW_SEC,
   OFF_HOLD_SEC, OFF_RATIO, ON_RATIO, QUIET_HOLD, QUIET_MIN_SPEECH, QUIET_OFF_DB, QUIET_ON_DB, QUIET_WINDOW,
-  STUCK_COOLDOWN, STUCK_SEC, VOICE_MAX_DB, VOICE_MIN_DB, VOICE_SETUP_SEC,
+  STUCK_COOLDOWN, STUCK_SEC, VOICE_END_SILENCE_SEC, VOICE_MAX_DB, VOICE_MIN_DB, VOICE_SETUP_SEC,
 } from "./constants";
 import { EventTracker } from "./events";
 import { median, quantile, toDb } from "./stats";
@@ -34,7 +34,7 @@ export type VoiceSetupMessage = "noise" | "noise_high" | "voice" | "voice_low" |
 export const VOICE_SETUP_MESSAGES: Record<VoiceSetupMessage, string> = {
   noise: "조용히 잠깐만 계세요. 주변 소리를 재고 있어요",
   noise_high: "소리가 들려서 다시 재요. 말하지 말고 조용히 계세요",
-  voice: "아래 문장을 평소 면접 목소리로 읽어 주세요",
+  voice: "아래 문장을 평소 면접 목소리로 끝까지 읽어 주세요. 다 읽고 잠깐 멈추면 넘어가요",
   voice_low: "목소리가 작아요. 조금만 크게 다시 읽어 주세요",
   voice_high: "목소리가 너무 커요. 조금만 작게 다시 읽어 주세요",
   done: "목소리 기준 완료!",
@@ -50,7 +50,9 @@ export class VoiceSetup {
   level = 0; // 진행도 0~1 (화면 막대)
   private samples: number[] = [];
   private spoken: number[] = [];
+  private silentSince: number | null = null;
   private vad: EnergyVad | null = null;
+  attempt = 0; // 문장 읽기 시도 번호 (다시 읽을 때마다 +1, 받아쓰기도 같이 새로 시작)
 
   get active() {
     return this.step !== "done";
@@ -76,14 +78,25 @@ export class VoiceSetup {
       return;
     }
     if (this.step !== "voice") return;
-    if (this.vad!.feed(t, rms)) this.spoken.push(toDb(rms));
-    this.level = Math.min(1, (this.spoken.length * BLOCK_SEC) / VOICE_SETUP_SEC);
-    if (this.spoken.length * BLOCK_SEC < VOICE_SETUP_SEC) return;
+    if (this.vad!.feed(t, rms)) {
+      this.spoken.push(toDb(rms));
+      this.silentSince = null;
+    } else if (this.spoken.length) this.silentSince ??= t;
+    const voiced = this.spoken.length * BLOCK_SEC;
+    this.level = Math.min(1, voiced / VOICE_SETUP_SEC);
+    if (voiced < VOICE_SETUP_SEC) return;
+    // 문장을 끝까지 읽고 멈출 때까지 기다린다
+    if (this.silentSince === null || t - this.silentSince < VOICE_END_SILENCE_SEC) return;
     const db = median(this.spoken);
     this.spoken = [];
-    if (db < VOICE_MIN_DB) this.message = "voice_low";
-    else if (db > VOICE_MAX_DB) this.message = "voice_high";
-    else {
+    this.silentSince = null;
+    if (db < VOICE_MIN_DB) {
+      this.message = "voice_low";
+      this.attempt++;
+    } else if (db > VOICE_MAX_DB) {
+      this.message = "voice_high";
+      this.attempt++;
+    } else {
       this.voiceDb = db;
       this.step = "done";
       this.message = "done";

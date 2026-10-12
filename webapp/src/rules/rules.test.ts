@@ -180,11 +180,26 @@ describe("음성", () => {
     const s = new VoiceSetup();
     run(0, 1.6, 0.03, (t) => s.feed(t, 0.001));
     expect(s.step).toBe("voice");
-    run(1.63, 6, 0.03, (t) => s.feed(t, 0.005)); // -46 dB
+    run(1.63, 7, 0.03, (t) => s.feed(t, 0.005)); // -46 dB
+    run(7.03, 8.6, 0.03, (t) => s.feed(t, 0.001)); // 읽기를 멈춤
     expect(s.message).toBe("voice_low");
-    run(6.03, 10, 0.03, (t) => s.feed(t, VOICE));
+    expect(s.attempt).toBe(1);
+    run(8.63, 14, 0.03, (t) => s.feed(t, VOICE));
+    expect(s.step).toBe("voice"); // 계속 읽는 중이면 기다림
+    run(14.03, 15.6, 0.03, (t) => s.feed(t, 0.001));
     expect(s.step).toBe("done");
     expect(s.voiceDb!).toBeCloseTo(-30.5, 0);
+  });
+
+  it("세팅: 4초를 넘겨도 문장을 다 읽고 멈출 때까지 넘어가지 않음", () => {
+    const s = new VoiceSetup();
+    run(0, 1.6, 0.03, (t) => s.feed(t, 0.001));
+    run(1.63, 6.5, 0.03, (t) => s.feed(t, VOICE)); // 약 4.8초 말함
+    run(6.53, 7.0, 0.03, (t) => s.feed(t, 0.001)); // 0.5초 쉼 (문장 중간 숨 고르기)
+    expect(s.step).toBe("voice");
+    run(7.03, 9, 0.03, (t) => s.feed(t, VOICE));
+    run(9.03, 10.6, 0.03, (t) => s.feed(t, 0.001));
+    expect(s.step).toBe("done");
   });
 });
 

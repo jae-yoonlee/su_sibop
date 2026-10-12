@@ -54,7 +54,8 @@ export const NOISE_RISE_DB = 10.0; // 세팅 때보다 이만큼 커지면
 export const NOISE_HOLD_SEC = 3.0; // 이 시간 이어질 때 경고
 
 // ── 목소리 기준 측정 [가설] 자동 음량 조절을 끈 상태의 dBFS
-export const VOICE_SETUP_SEC = 3.0; // 문장을 읽으며 이만큼 말하면 기준 확정
+export const VOICE_SETUP_SEC = 4.0; // 문장을 읽으며 최소 이만큼 말해야 하고 (문장 전체 약 5~6초)
+export const VOICE_END_SILENCE_SEC = 1.0; // 그 뒤 이만큼 조용해지면 '다 읽었다'로 보고 기준 확정 (3초 고정이면 읽는 중에 넘어감)
 export const VOICE_MIN_DB = -42.0; // 기준이 이보다 작으면 '더 크게'
 export const VOICE_MAX_DB = -12.0; // 이보다 크면 '조금 작게' (찢어짐 위험)
 export const NOISE_SETUP_SEC = 1.5; // 조용히 있는 동안 소음 측정 (Python NOISE_SEC 1초보다 넉넉히)

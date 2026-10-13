@@ -1,6 +1,7 @@
 // 브라우저 안 AI (WebLLM + Qwen3-1.7B). 첫 방문엔 약 1GB를 받고, 그 뒤엔 브라우저 캐시에서 읽는다.
 import type { InitProgressReport, WebWorkerMLCEngine } from "@mlc-ai/web-llm";
 import { QUESTION_SCHEMA, questionPrompt } from "./questions";
+import { FOLLOWUP_SCHEMA } from "./followup";
 import type { Coverage } from "./competency";
 
 export type LlmState =
@@ -77,11 +78,27 @@ export async function generateQuestions(e: WebWorkerMLCEngine, resume: string, c
   const res = await e.chat.completions.create({
     messages: [{ role: "user", content: questionPrompt(resume, coverage) }],
     temperature: 0.7,
-    max_tokens: 500,
+    max_tokens: 300, // 질문 문장 3개만 쓰므로 짧게 (빠름)
     response_format: { type: "json_object", schema: QUESTION_SCHEMA },
     extra_body: { enable_thinking: false },
   });
   return res.choices[0]?.message?.content ?? "";
+}
+
+/** 꼬리질문 한 문장. 모델이 아직 준비 안 됐으면 null (그때는 틀 문장) */
+export function followupAsker(): ((prompt: string) => Promise<string>) | null {
+  if (!engine || llmState.kind !== "ready") return null;
+  const e = engine;
+  return async (prompt) => {
+    const res = await e.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8, // 같은 답에도 매번 조금 다르게
+      max_tokens: 80,
+      response_format: { type: "json_object", schema: FOLLOWUP_SCHEMA },
+      extra_body: { enable_thinking: false },
+    });
+    return res.choices[0]?.message?.content ?? "";
+  };
 }
 
 export const currentModel = () => modelId;

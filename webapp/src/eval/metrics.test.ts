@@ -26,19 +26,16 @@ describe("역량 찾기 지표", () => {
 describe("질문 지표", () => {
   const c = ds.cases[0];
   const { fallback } = caseInput(ds, c);
-  const ev = "Python과 FastAPI로 주문 API를 만들고 PostgreSQL로 데이터베이스를 설계했습니다.";
-
-  it("근거 문장 복사 여부와 채택 수를 셈", () => {
-    const raw = JSON.stringify({ questions: [
-      { type: "경험", question: "주문 API를 설계할 때 맡은 역할을 말해 주세요.", evidence: ev },
-      { type: "직무", question: "클라우드 배포 경험이 있나요?", evidence: "지어낸 문장입니다." },
-      { type: "상황", question: "짧음", evidence: "" },
-    ] });
+  it("근거 반영 여부와 채택 수를 셈 (근거 문장은 규칙이 고름)", () => {
+    expect(fallback[0].evidence).not.toBe("");
+    const first = fallback[0].evidence.split(" ").find((w) => w.length >= 3)!;
+    const raw = JSON.stringify({ questions: [`${first} 경험에서 맡은 역할을 말해 주세요.`, "주말에는 보통 무엇을 하시나요?", "짧음"] });
     const s = scoreAiAnswer(raw, c.resume, fallback);
     expect(s.jsonOk).toBe(true);
-    expect(s.evidenceGiven).toBe(2);
+    expect(s.aiCount).toBe(2);
+    expect(s.questions[0].evidence).toBe(fallback[0].evidence);
+    expect(s.evidenceGiven).toBe(fallback[1].evidence ? 2 : 1);
     expect(s.evidenceExact).toBe(1);
-    expect(s.aiCount).toBe(1);
   });
 
   it("JSON이 아니면 실패로 셈", () => {

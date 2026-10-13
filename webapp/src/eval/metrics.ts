@@ -50,31 +50,31 @@ export interface QuestionRun {
   ms: number; // 생성 시간 (규칙은 0)
   jsonOk: boolean; // AI 답을 JSON으로 읽을 수 있었나
   aiCount: number; // 규칙 검사를 통과한 AI 질문 수 (0~3)
-  evidenceGiven: number; // AI가 근거 문장을 낸 수
-  evidenceExact: number; // 그중 자소서에 글자 그대로 있는 수
+  evidenceGiven: number; // 근거 문장이 있는 자리의 AI 질문 수
+  evidenceExact: number; // 그중 근거 문장 내용을 질문에 쓴 수
   questions: Question[];
   raw: string;
 }
 
-const norm = (s: string) => (s ?? "").replace(/\s+/g, " ").trim();
+
+/** 근거 문장의 2글자 이상 낱말(조사 뗀 앞 2글자)이 질문에 하나라도 있으면 '근거를 반영했다'고 본다 */
+export function usesEvidence(q: string, evidence: string) {
+  const words = evidence.split(/[\s,.!?"'()]+/).filter((w) => w.length >= 2).map((w) => w.slice(0, 2));
+  return words.some((w) => q.includes(w));
+}
 
 export function scoreAiAnswer(raw: string, resume: string, fallback: Question[]) {
-  let items: Record<string, string>[] = [];
   let jsonOk = false;
   try {
     const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    const data = JSON.parse(cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1));
-    if (Array.isArray(data?.questions)) {
-      items = data.questions;
-      jsonOk = true;
-    }
+    jsonOk = Array.isArray(JSON.parse(cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1))?.questions);
   } catch {
     /* jsonOk = false */
   }
-  const body = norm(resume);
-  const given = items.slice(0, 3).map((it) => norm(it?.evidence)).filter(Boolean);
   const { questions, aiCount } = parseAiQuestions(raw, resume, fallback);
-  return { jsonOk, aiCount, evidenceGiven: given.length, evidenceExact: given.filter((e) => body.includes(e)).length, questions };
+  // 근거 문장은 규칙이 골라 주므로, AI 질문이 그 문장 내용을 실제로 썼는지 본다
+  const withEv = questions.filter((q) => q.source === "ai" && q.evidence);
+  return { jsonOk, aiCount, evidenceGiven: withEv.length, evidenceExact: withEv.filter((q) => usesEvidence(q.question, q.evidence)).length, questions };
 }
 
 export function summarize(runs: QuestionRun[], deadlineMs: number) {

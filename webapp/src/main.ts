@@ -11,11 +11,14 @@ import { ALERT_LABELS, AnswerCoach, type AnswerStats } from "./rules/session";
 import { toDb } from "./rules/stats";
 import { VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
 import { GEMINI_MODEL } from "./prep/gemini";
-import { llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
+import { followupAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
+import { FOLLOWUP_TARGET_SEC, ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
 import { runPrep, type PrepState, type StepState } from "./prep/pipeline";
 
-// 본질문 2개 (꼬리질문은 3단계에서). AI가 만든 질문 3개 중 앞의 2개를 쓰고 1개는 예비.
+// 2라운드 × (본질문 → 꼬리질문) = 4문항. AI가 만든 본질문 3개 중 앞의 2개를 쓰고 1개는 예비.
 const ROUNDS = 2;
+const TOTAL = ROUNDS * 2;
+const FOLLOW_READ_SEC = 10; // 꼬리질문은 짧으니 읽는 시간도 짧게
 const MIN_CHARS = 30;
 const KEY_STORE = "sibop.geminiKey";
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -25,7 +28,19 @@ const store = {
 };
 const READ_SENTENCE = "안녕하세요. 오늘 면접에서 제 경험을 차분하고 또렷하게 말씀드리겠습니다.";
 
-type Phase = "intro" | "loading" | "setup" | "ready" | "question" | "answer" | "result";
+type Phase = "intro" | "loading" | "setup" | "ready" | "question" | "answer" | "followup" | "result";
+
+interface Asked {
+  text: string;
+  kind: "main" | "follow";
+  type: string; // 경험·직무·상황
+  source: "ai" | "rule";
+  evidence: string;
+  reason?: IssueName; // 꼬리질문: 규칙이 고른 빈 곳
+  issues?: IssueName[];
+  error?: string; // 꼬리질문을 AI가 못 쓴 이유
+  ms?: number; // 답변이 끝나고 꼬리질문이 뜨기까지
+}
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const S = {
@@ -40,22 +55,32 @@ const S = {
   frame: null as FrameResult | null,
   fps: 0,
   rmsDb: -100,
-  qIndex: 0,
+  asked: [] as Asked[], // 실제로 물은 질문 (results·transcripts와 같은 순서)
   phaseAt: 0,
   coach: null as AnswerCoach | null,
   results: [] as AnswerStats[],
   debug: false,
   input: { posting: "", resume: "", geminiKey: store.get(KEY_STORE) },
   prep: null as PrepState | null,
-  skipAi: false,
   sttMode: "none" as SttMode,
   stt: null as Transcriber | null,
   sttCheck: null as { text: string; acc: number; error: string } | null, // 문장 읽기 받아쓰기 결과
   readAttempt: -1,
   transcripts: [] as string[], // 질문별 답변 받아쓰기
 };
-const curQ = () => S.prep?.questions[S.qIndex]?.question ?? "";
-const questionsReady = () => !!S.prep && (S.prep.done || S.skipAi);
+const cur = () => S.asked[S.asked.length - 1];
+const curQ = () => cur()?.text ?? "";
+const questionsReady = () => !!S.prep?.done;
+const mainCount = () => S.asked.filter((a) => a.kind === "main").length;
+function askMain() {
+  const q = S.prep!.questions[mainCount()];
+  S.asked.push({ text: q.question, kind: "main", type: q.type, source: q.source, evidence: q.evidence });
+}
+function resetRun() {
+  S.results = [];
+  S.transcripts = [];
+  S.asked = [];
+}
 
 const now = () => performance.now() / 1000;
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => app.querySelector<T>(sel);
@@ -119,7 +144,7 @@ function introHtml() {
       <div class="steps">
         ${step(1, "역량 정리", "채용공고에서 필요역량을 뽑고, 자소서에 근거가 있는지 확인해요")}
         ${step(2, "질문 준비 + 자리 맞추기", "AI가 질문 3개를 만드는 동안 카메라와 목소리 기준을 맞춰요")}
-        ${step(3, `질문 ${ROUNDS}개`, `질문을 ${QUESTION_SEC}초 보고 ${ANSWER_SEC}초 답해요. 그동안 실시간 알림이 떠요`)}
+        ${step(3, `질문 ${TOTAL}개`, `질문을 ${QUESTION_SEC}초 보고 ${ANSWER_SEC}초 답해요. 답이 끝나면 내 답변을 보고 꼬리질문이 이어져요`)}
         ${step(4, "결과", "역량 일치와 경고를 정리해요")}
       </div>
     </div>
@@ -179,15 +204,19 @@ function overlayHtml() {
   if (S.phase === "ready") {
     const warns = S.cam.warnings.map((w) => `<div>${SETUP_MESSAGES[w]}</div>`).join("");
     if (!questionsReady())
-      return `<div class="setup-card"><div class="msg">세팅 완료! 질문을 마무리하고 있어요</div>
-        <div id="wait-ai"></div><button class="btn-ghost-sm" id="skip-ai">AI 기다리지 않고 규칙 질문으로 시작</button></div>${prepCard()}${meter}`;
+      return `<div class="setup-card"><div class="msg">세팅 완료! AI가 자소서로 질문을 쓰고 있어요</div>
+        <div>자소서는 이 PC 안의 AI만 읽어요. 처음 방문이면 AI를 받느라 더 걸려요</div></div>${prepCard()}${meter}`;
     return `<button class="start" id="start">시작</button><div class="warn-list">${warns}</div>${sttCheckHtml()}${meter}`;
   }
+  if (S.phase === "followup")
+    return `<div class="qslot placeholder">꼬리질문을 만들고 있어요…</div>
+      <div class="setup-card"><div class="msg">방금 답변을 보고 꼬리질문을 쓰는 중</div><div>규칙이 답변의 빈 곳을 찾고, 이 PC 안의 AI가 질문을 써요 (목표 ${FOLLOWUP_TARGET_SEC}초)</div></div>${meter}`;
   // question / answer
   const q = esc(curQ());
   const label = S.phase === "question" ? "질문을 읽고 생각해 보세요" : "답변 중";
+  const follow = cur()?.kind === "follow" ? `<span class="badge follow">꼬리질문</span>` : "";
   return `
-    <div class="qslot"><div class="meta"><span class="badge">질문 ${S.qIndex + 1} / ${ROUNDS}</span><span>${label}</span></div>
+    <div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length} / ${TOTAL}</span>${follow}<span>${label}</span></div>
       <p class="q">${q}</p></div>
     <div class="topbar"><div class="timer"><svg width="84" height="84"><circle cx="42" cy="42" r="36" stroke="rgba(255,255,255,.15)" stroke-width="8" fill="none"/>
       <circle id="ring" cx="42" cy="42" r="36" stroke="${S.phase === "question" ? "#fff" : "#5865f2"}" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="0"/></svg><span id="sec"></span></div></div>
@@ -226,7 +255,8 @@ function resultHtml() {
   const shown = rows.reduce((a, r) => a + r.shown, 0);
   const top = rows[0]?.label ?? "없음";
   const perQ = S.results
-    .map((r, i) => `<tr><td>질문 ${i + 1}</td><td>${r.durationS}초</td><td>${r.alerts.map((a) => `${a.label} ${a.count}`).join(", ") || "경고 없음"}</td></tr>
+    .map((r, i) => `<tr><td>질문 ${i + 1}${S.asked[i]?.kind === "follow" ? " <span class='badge follow'>꼬리</span>" : ""}</td><td>${r.durationS}초</td><td>${r.alerts.map((a) => `${a.label} ${a.count}`).join(", ") || "경고 없음"}</td></tr>
+      <tr><td colspan="3" class="asked">${esc(S.asked[i]?.text ?? "")}${askedNote(S.asked[i])}</td></tr>
       <tr><td colspan="3" class="transcript">${S.sttMode === "none" ? "받아쓰기 안 됨" : S.transcripts[i] === undefined ? "받아쓰는 중…" : esc(S.transcripts[i] || "(받아쓴 내용 없음)")}</td></tr>`)
     .join("");
   const settings = S.mic?.settings ?? {};
@@ -272,8 +302,15 @@ function coverageHtml() {
     ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? esc(c.found.join(", ")) : "<span style='color:var(--magenta)'>근거 없음</span>"}</td></tr>`).join("")}
     </table>
     <p style="opacity:.75;font-size:14px">정리: ${p.requiredBy === "gemini" ? "Gemini + 규칙" : "규칙 사전(NCS 직업기초능력)"} · 질문: ${p.questionsBy === "ai" ? "브라우저 안 AI" : "규칙"}. 답변과의 비교는 다음 단계에서 붙어요.</p>
-    <h3>받은 질문</h3><ol>${p.questions.slice(0, ROUNDS).map((q) => `<li>${esc(q.question)}</li>`).join("")}</ol>
   </div>`;
+}
+
+function askedNote(a?: Asked) {
+  if (!a) return "";
+  if (a.kind === "main") return `<small>본질문 · ${a.source === "ai" ? "이 PC 안 AI" : "규칙"}${a.evidence ? ` · 근거: “${esc(a.evidence)}”` : ""}</small>`;
+  const why = `빈 곳: ${ISSUE_LABELS[a.reason!]}`;
+  const by = a.source === "ai" ? "이 PC 안 AI가 씀" : `정해진 문장 (${esc(a.error ?? "")})`;
+  return `<small>꼬리질문 · ${why} · ${by} · ${((a.ms ?? 0) / 1000).toFixed(1)}초</small>`;
 }
 
 // ── 이벤트 ─────────────────────────────────────────────
@@ -289,7 +326,6 @@ function bindPage() {
       return render();
     }
     store.set(KEY_STORE, geminiKey);
-    S.skipAi = false;
     S.prep = runPrep(S.input, (p) => {
       S.prep = p;
       if (S.phase === "ready" || (S.phase === "setup" && !$("#prep-card"))) return render();
@@ -299,9 +335,7 @@ function bindPage() {
     void start();
   });
   $("#new-input")?.addEventListener("click", () => {
-    S.results = [];
-    S.transcripts = [];
-    S.qIndex = 0;
+    resetRun();
     S.prep = null;
     S.mic?.stop();
     (S.video?.srcObject as MediaStream | null)?.getTracks().forEach((t) => t.stop());
@@ -311,15 +345,13 @@ function bindPage() {
     go("intro");
   });
   $("#again")?.addEventListener("click", () => {
-    S.results = [];
-    S.transcripts = [];
-    S.qIndex = 0;
+    resetRun();
     S.cam = new CameraSetup();
     S.voice = new VoiceSetup();
     go("setup");
   });
   $("#download")?.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, transcript: S.transcripts[i] ?? "" })) }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })) }, null, 2)], { type: "application/json" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `면접코치-${Date.now()}.json` });
     a.click();
   });
@@ -333,15 +365,15 @@ function bindOverlay() {
     S.sttCheck = null;
     render();
   });
-  $("#start")?.addEventListener("click", () => go("question"));
+  $("#start")?.addEventListener("click", () => {
+    resetRun();
+    askMain();
+    go("question");
+  });
   $("#reread")?.addEventListener("click", () => {
     S.voice = new VoiceSetup();
     S.sttCheck = null;
     go("setup");
-  });
-  $("#skip-ai")?.addEventListener("click", () => {
-    S.skipAi = true;
-    render();
   });
   $("#skip")?.addEventListener("click", () => (S.phase === "question" ? go("answer") : endAnswer()));
 }
@@ -373,19 +405,37 @@ function startStt() {
 
 function endAnswer() {
   if (!S.coach) return;
-  const qi = S.qIndex;
+  const qi = S.results.length;
+  const asked = cur();
   const stt = S.stt;
   S.stt = null;
-  void stt?.stop().then((text) => {
-    S.transcripts[qi] = text;
+  const text = stt ? stt.stop() : Promise.resolve("");
+  void text.then((t) => {
+    S.transcripts[qi] = t;
     if (S.phase === "result") render();
   });
   S.results.push(S.coach.finish(now()));
   S.coach = null;
-  if (S.qIndex + 1 < ROUNDS) {
-    S.qIndex++;
+  if (asked.kind === "main") return void nextFollowup(asked, text);
+  if (mainCount() < ROUNDS) {
+    askMain();
     go("question");
   } else go("result");
+}
+
+/** 본질문 답변이 끝나면: 받아쓰기 마무리 → 규칙이 빈 곳 찾기 → 이 PC 안 AI가 꼬리질문 한 문장 */
+async function nextFollowup(main: Asked, text: Promise<string>) {
+  go("followup");
+  const t0 = performance.now();
+  const answer = await text;
+  const history = loadHistory(S.input.resume);
+  const f = await makeFollowup({ type: main.type, question: main.text, evidence: main.evidence, source: main.source }, answer, {
+    ask: followupAsker(),
+    history,
+  });
+  saveHistory(S.input.resume, f.question);
+  S.asked.push({ text: f.question, kind: "follow", type: main.type, source: f.source, evidence: main.evidence, reason: f.reason, issues: f.issues, error: f.error, ms: performance.now() - t0 });
+  if (S.phase === "followup") go("question");
 }
 
 async function start() {
@@ -491,7 +541,7 @@ function tickUi() {
     }
   }
   if (S.phase === "question" || S.phase === "answer") {
-    const total = S.phase === "question" ? QUESTION_SEC : ANSWER_SEC;
+    const total = S.phase === "answer" ? ANSWER_SEC : cur()?.kind === "follow" ? FOLLOW_READ_SEC : QUESTION_SEC;
     const left = Math.max(0, total - (t - S.phaseAt));
     const sec = $("#sec"), ring = $("#ring");
     if (sec) sec.textContent = String(Math.ceil(left));

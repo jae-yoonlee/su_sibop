@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkResume, findCompetencies, requiredFromRules } from "./competency";
 import { parseRequired } from "./gemini";
-import { parseAiQuestions, questionPrompt, questionSlots, ruleQuestions } from "./questions";
+import { parseAiQuestions, questionPrompt, questionProblem, questionSlots, quoteClause, ruleQuestions } from "./questions";
 import { runPrep, type PrepState } from "./pipeline";
 
 const POSTING = `[자격요건] 다양한 부서와 원활하게 협업할 수 있는 분.
@@ -53,7 +53,8 @@ describe("질문", () => {
   it("근거 문장은 규칙이 고름: 경험=숫자+역할 문장, 서로 다른 문장", () => {
     const slots = questionSlots(RESUME, cov);
     expect(slots[0].evidence).toContain("팀장");
-    expect(new Set(slots.map((s) => s.evidence)).size).toBe(3);
+    expect(slots[1].evidence).not.toBe(slots[0].evidence);
+    expect(slots[2].evidence).not.toContain("좋아합니다"); // 경험이 아닌 문장으로 갈등을 묻지 않음
     expect(slots[1].competency).toBe("의사소통");
     expect(questionPrompt(RESUME, cov)).not.toContain("새로운 기술을 배우는 것을 좋아합니다.\n저는"); // 자소서 전체를 넣지 않음
   });
@@ -67,6 +68,18 @@ describe("질문", () => {
     expect(questions[0]).toMatchObject({ source: "ai", evidence: fallback[0].evidence });
     expect(questions[1]).toEqual(fallback[1]);
     expect(questions[2].source).toBe("ai");
+  });
+
+  it("질문 인용은 중간에 자르지 않음: 긴 문장은 숫자 있는 구절을 골라 '~다'로 맺음", () => {
+    expect(quoteClause("저는 2023년 3월부터 6개월 동안 캡스톤 프로젝트에서 팀장을 맡았습니다.")).toBe("2023년 3월부터 6개월 동안 캡스톤 프로젝트에서 팀장을 맡았습니다");
+    expect(quoteClause("팀원 4명과 협업하며 일정 관리를 담당했고, 사용자 이탈률을 30% 줄였습니다. 그리고 많은 것을 배웠습니다")).not.toContain("…");
+    expect(quoteClause("새로운 서비스를 기획하면서 팀원 4명과 매주 회의하며 일정 관리를 담당했고, 사용자 이탈률을 30% 줄였습니다.")).toBe("새로운 서비스를 기획하면서 팀원 4명과 매주 회의하며 일정 관리를 담당했다");
+    for (const q of fallback) expect(q.question).not.toMatch(/…|\.\.\./);
+  });
+
+  it("AI 질문이 말을 자르거나 막연하면 떨어뜨림", () => {
+    expect(questionProblem("자기소개서에 '캡스톤 프로젝트에서…'라고 쓰셨는데 역할은 무엇이었나요?", RESUME)).toBe("말을 중간에 자름");
+    expect(questionProblem("팀장 경험에 대해 어떻게 생각하시나요?", RESUME)).toBe("막연한 물음");
   });
 
   it("AI 답이 깨지면 모두 규칙 질문", () => {

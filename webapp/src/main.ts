@@ -306,22 +306,92 @@ function resultHtml() {
   </div></div>`;
 }
 
-/** 증거 영상: 질문마다 답변 녹화 + 경고 순간 버튼 (누르면 그 순간 2초 전부터 재생) */
+// ── 경고 장면 클립 (다시보기) ──
+interface Clip { q: number; from: number; to: number; names: string[] }
+const CLIP_TAIL_SEC = 2; // 경고가 끝난 뒤 이만큼 더 보여 줌
+
+/** 경고 구간을 앞뒤 여유를 붙인 클립으로 만들고, 같은 질문에서 겹치는 클립은 하나로 합친다 */
+function buildClips(): Clip[] {
+  const out: Clip[] = [];
+  S.results.forEach((r, q) => {
+    if (!S.clips[q]) return;
+    for (const e of r.events) {
+      const c: Clip = { q, from: Math.max(0, e.start - CLIP_LEAD_SEC), to: Math.min(r.durationS, e.end + CLIP_TAIL_SEC), names: [e.name] };
+      const last = out[out.length - 1];
+      if (last && last.q === q && c.from <= last.to) {
+        last.to = Math.max(last.to, c.to);
+        if (!last.names.includes(e.name)) last.names.push(e.name);
+      } else out.push(c);
+    }
+  });
+  return out;
+}
+const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+
 function evidenceHtml() {
   if (!S.results.some((r) => r.events.length)) return "";
-  const blocks = S.results
-    .map((r, i) => {
-      if (!r.events.length) return "";
-      const url = S.clips[i];
-      const moments = r.events
-        .map((e) => `<button class="moment ${grade(r.alerts.find((a) => a.name === e.name)?.count ?? 0)}" data-q="${i}" data-t="${Math.max(0, e.start - CLIP_LEAD_SEC)}" ${url ? "" : "disabled"}>▶ ${e.start.toFixed(0)}초 · ${ALERT_LABELS[e.name]} (${(e.end - e.start).toFixed(1)}초)</button>`)
-        .join("");
-      const video = url === undefined ? `<div class="muted">영상 정리 중…</div>` : url ? `<video id="clip-${i}" src="${url}" controls playsinline preload="metadata"></video>` : `<div class="muted">녹화 영상 없음${S.recError ? ` (${esc(S.recError)})` : ""}</div>`;
-      return `<div class="evidence"><h3>질문 ${i + 1}${S.asked[i]?.kind === "follow" ? " · 꼬리질문" : ""}</h3>${video}<div class="moments">${moments}</div></div>`;
-    })
+  if (S.results.some((_, i) => S.clips[i] === undefined)) return `<h2>경고 장면 다시보기</h2><div class="muted">영상 정리 중…</div>`;
+  const clips = buildClips();
+  if (!clips.length) return `<h2>경고 장면 다시보기</h2><div class="muted">녹화 영상이 없어요${S.recError ? ` (${esc(S.recError)})` : ""}</div>`;
+  const total = new Map<string, number>();
+  S.results.forEach((r) => r.alerts.forEach((a) => total.set(a.name, (total.get(a.name) ?? 0) + a.count)));
+  const worst = (names: string[]) => names.map((n) => grade(total.get(n) ?? 0)).sort((x, y) => "okwarnbad".indexOf(y) - "okwarnbad".indexOf(x))[0];
+  const cards = clips
+    .map((c, k) => `<button class="clip ${worst(c.names)}" data-k="${k}">
+      <span class="clip-q">질문 ${c.q + 1}${S.asked[c.q]?.kind === "follow" ? " · 꼬리" : ""} · ${mmss(c.from)}–${mmss(c.to)}</span>
+      <b>${c.names.map((n) => esc(ALERT_LABELS[n])).join(" · ")}</b>
+      <span class="grade ${worst(c.names)}">${GRADE_TEXT[worst(c.names)]}</span></button>`)
     .join("");
-  return `<h2>경고 장면 다시 보기</h2>
-    <p style="opacity:.75;font-size:14px">경고가 시작되기 ${CLIP_LEAD_SEC}초 전부터 재생돼요. 영상은 이 브라우저 메모리에만 있고 어디에도 보내지 않아요. 창을 닫으면 사라져요.</p>${blocks}`;
+  return `<h2>경고 장면 다시보기 <span class="badge">${clips.length}개 클립</span></h2>
+    <p style="opacity:.75;font-size:14px">경고 ${CLIP_LEAD_SEC}초 전부터 끝난 뒤 ${CLIP_TAIL_SEC}초까지 잘라 보여 줘요. 영상은 이 브라우저 메모리에만 있고 어디에도 보내지 않아요. 창을 닫으면 사라져요.</p>
+    <div class="replay"><div class="player"><video id="replay" playsinline controls></video><div class="now" id="replay-now">클립을 고르거나 '전체 이어보기'를 누르세요</div></div>
+    <div class="clips"><button class="btn-primary" id="play-all">▶ 전체 이어보기</button>${cards}</div></div>`;
+}
+
+// 다시보기 재생기: 클립 하나 또는 전체를 순서대로, 클립 끝에서 멈추거나 다음으로 넘어감
+let clipQueue: number[] = [];
+let clipList: Clip[] = [];
+async function playClip(k: number) {
+  const c = clipList[k];
+  const v = $<HTMLVideoElement>("#replay");
+  if (!v) return;
+  const url = S.clips[c.q]!;
+  if (v.dataset.q !== String(c.q)) {
+    v.src = url;
+    v.dataset.q = String(c.q);
+    await new Promise((r) => v.addEventListener("loadedmetadata", r, { once: true }));
+    await fixDuration(v);
+  }
+  v.currentTime = c.from;
+  v.dataset.to = String(c.to);
+  app.querySelectorAll<HTMLElement>(".clip").forEach((el) => el.classList.toggle("on", el.dataset.k === String(k)));
+  const now = $("#replay-now");
+  if (now) now.textContent = `질문 ${c.q + 1} · ${c.names.map((n) => ALERT_LABELS[n]).join(" · ")} (${mmss(c.from)}–${mmss(c.to)})`;
+  void v.play();
+}
+function bindReplay() {
+  const v = $<HTMLVideoElement>("#replay");
+  if (!v) return;
+  clipList = buildClips();
+  clipQueue = [];
+  const advance = () => {
+    v.pause();
+    delete v.dataset.to;
+    const next = clipQueue.shift();
+    if (next !== undefined) void playClip(next);
+  };
+  v.addEventListener("timeupdate", () => v.dataset.to && v.currentTime >= Number(v.dataset.to) - 0.05 && advance());
+  v.addEventListener("ended", () => v.dataset.to && advance());
+  app.querySelectorAll<HTMLButtonElement>(".clip").forEach((b) =>
+    b.addEventListener("click", () => {
+      clipQueue = [];
+      void playClip(Number(b.dataset.k));
+    }),
+  );
+  $("#play-all")?.addEventListener("click", () => {
+    clipQueue = clipList.map((_, k) => k).slice(1);
+    void playClip(0);
+  });
 }
 
 function coverageHtml() {
@@ -382,17 +452,7 @@ function bindPage() {
     S.voice = new VoiceSetup();
     go("setup");
   });
-  app.querySelectorAll<HTMLButtonElement>(".moment").forEach((b) =>
-    b.addEventListener("click", async () => {
-      const v = $<HTMLVideoElement>(`#clip-${b.dataset.q}`);
-      if (!v) return;
-      if (v.readyState < 1) await new Promise((r) => v.addEventListener("loadedmetadata", r, { once: true }));
-      await fixDuration(v);
-      v.currentTime = Number(b.dataset.t);
-      v.scrollIntoView({ behavior: "smooth", block: "center" });
-      void v.play();
-    }),
-  );
+  bindReplay();
   $("#download")?.addEventListener("click", () => {
     const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })) }, null, 2)], { type: "application/json" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `면접코치-${Date.now()}.json` });

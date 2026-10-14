@@ -5,7 +5,8 @@ import { openMic, type Mic } from "./media/mic";
 import { accuracy } from "./media/cer";
 import { STT_MODE_TEXT, sttMode, Transcriber, type SttMode } from "./media/stt";
 import { CameraSetup, SETUP_MESSAGES } from "./rules/cameraSetup";
-import { ANSWER_SEC, QUESTION_SEC } from "./rules/constants";
+import { ANSWER_SEC, CLIP_LEAD_SEC, PROBLEM_COUNT, QUESTION_SEC, WARN_COUNT } from "./rules/constants";
+import { AnswerRecorder, fixDuration } from "./media/recorder";
 import { STATUS_ALERTS } from "./rules/gate";
 import { ALERT_LABELS, AnswerCoach, type AnswerStats } from "./rules/session";
 import { toDb } from "./rules/stats";
@@ -67,6 +68,9 @@ const S = {
   sttCheck: null as { text: string; acc: number; error: string } | null, // 문장 읽기 받아쓰기 결과
   readAttempt: -1,
   transcripts: [] as string[], // 질문별 답변 받아쓰기
+  rec: null as AnswerRecorder | null,
+  clips: [] as (string | null)[], // 질문별 답변 녹화 (blob: 주소, 이 브라우저 메모리에만)
+  recError: "",
 };
 const cur = () => S.asked[S.asked.length - 1];
 const curQ = () => cur()?.text ?? "";
@@ -80,7 +84,14 @@ function resetRun() {
   S.results = [];
   S.transcripts = [];
   S.asked = [];
+  S.clips.forEach((u) => u && URL.revokeObjectURL(u));
+  S.clips = [];
+  S.recError = "";
 }
+
+type Grade = "ok" | "warn" | "bad";
+const grade = (n: number): Grade => (n >= PROBLEM_COUNT ? "bad" : n >= WARN_COUNT ? "warn" : "ok");
+const GRADE_TEXT: Record<Grade, string> = { ok: "정상", warn: "주의", bad: "문제" };
 
 const now = () => performance.now() / 1000;
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => app.querySelector<T>(sel);
@@ -209,8 +220,9 @@ function overlayHtml() {
     return `<button class="start" id="start">시작</button><div class="warn-list">${warns}</div>${sttCheckHtml()}${meter}`;
   }
   if (S.phase === "followup")
-    return `<div class="qslot placeholder">꼬리질문을 만들고 있어요…</div>
-      <div class="setup-card"><div class="msg">방금 답변을 보고 꼬리질문을 쓰는 중</div><div>규칙이 답변의 빈 곳을 찾고, 이 PC 안의 AI가 질문을 써요 (목표 ${FOLLOWUP_TARGET_SEC}초)</div></div>${meter}`;
+    return `<div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length + 1} / ${TOTAL}</span><span class="badge follow">꼬리질문</span><span>준비 중</span></div>
+      <p class="q">방금 답변을 보고 이어서 물어볼게요…</p></div>
+      <div class="setup-card"><div>규칙이 답변에서 짚을 부분을 고르고, 이 PC 안의 AI가 질문을 써요 (목표 ${FOLLOWUP_TARGET_SEC}초)</div></div>${meter}`;
   // question / answer
   const q = esc(curQ());
   const label = S.phase === "question" ? "질문을 읽고 생각해 보세요" : "답변 중";
@@ -221,6 +233,7 @@ function overlayHtml() {
     <div class="topbar"><div class="timer"><svg width="84" height="84"><circle cx="42" cy="42" r="36" stroke="rgba(255,255,255,.15)" stroke-width="8" fill="none"/>
       <circle id="ring" cx="42" cy="42" r="36" stroke="${S.phase === "question" ? "#fff" : "#5865f2"}" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="0"/></svg><span id="sec"></span></div></div>
     <div class="toasts"></div>
+    ${S.phase === "answer" && S.sttMode !== "none" ? `<div class="stt-live" id="stt-live">받아쓰는 중…</div>` : ""}
     <div class="bottom-actions"><button class="btn-ghost-sm" id="skip">${S.phase === "question" ? "바로 답변 시작" : "답변 끝내기"}</button></div>
     ${meter}`;
 }
@@ -273,10 +286,11 @@ function resultHtml() {
     ${coverageHtml()}
     <div class="card-dark">
       <h2 style="margin-top:0">경고별 누적</h2>
-      <table><tr><th>경고</th><th>횟수</th><th>지속 시간</th><th>화면 알림</th></tr>
-      ${rows.map((r) => `<tr><td>${r.label}</td><td>${r.count}회</td><td>${r.seconds.toFixed(1)}초</td><td>${r.shown}회</td></tr>`).join("") || `<tr><td colspan="4">경고가 없었어요</td></tr>`}
+      <table><tr><th>경고</th><th>판정</th><th>횟수</th><th>지속 시간</th><th>화면 알림</th></tr>
+      ${rows.map((r) => `<tr><td>${r.label}</td><td><span class="grade ${grade(r.count)}">${GRADE_TEXT[grade(r.count)]}</span></td><td>${r.count}회</td><td>${r.seconds.toFixed(1)}초</td><td>${r.shown}회</td></tr>`).join("") || `<tr><td colspan="5">경고가 없었어요</td></tr>`}
       </table>
-      <p style="opacity:.75;font-size:14px">알림은 답변을 방해하지 않게 20초에 하나, 1분에 2개까지만 띄워요. 못 띄운 경고도 여기에는 모두 들어가요.</p>
+      <p style="opacity:.75;font-size:14px">판정: 경고 종류별로 ${TOTAL}문항 전체에서 ${WARN_COUNT - 1}회까지 정상, ${WARN_COUNT}~${PROBLEM_COUNT - 1}회 주의, ${PROBLEM_COUNT}회 이상 문제. 알림은 답변을 방해하지 않게 20초에 하나, 1분에 2개까지만 띄우지만, 못 띄운 경고도 여기에는 모두 들어가요.</p>
+      ${evidenceHtml()}
       <h2>질문별</h2>
       <table>${perQ}</table>
     </div>
@@ -290,6 +304,24 @@ function resultHtml() {
         prep: S.prep && { timings: S.prep.timings, requiredBy: S.prep.requiredBy, questionsBy: S.prep.questionsBy, llm: llmState.kind, notes: S.prep.note },
         noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), stt: { mode: S.sttMode, check: S.sttCheck }, camera: S.cam.warnings, ua: navigator.userAgent }, null, 2)}</pre></details>
   </div></div>`;
+}
+
+/** 증거 영상: 질문마다 답변 녹화 + 경고 순간 버튼 (누르면 그 순간 2초 전부터 재생) */
+function evidenceHtml() {
+  if (!S.results.some((r) => r.events.length)) return "";
+  const blocks = S.results
+    .map((r, i) => {
+      if (!r.events.length) return "";
+      const url = S.clips[i];
+      const moments = r.events
+        .map((e) => `<button class="moment ${grade(r.alerts.find((a) => a.name === e.name)?.count ?? 0)}" data-q="${i}" data-t="${Math.max(0, e.start - CLIP_LEAD_SEC)}" ${url ? "" : "disabled"}>▶ ${e.start.toFixed(0)}초 · ${ALERT_LABELS[e.name]} (${(e.end - e.start).toFixed(1)}초)</button>`)
+        .join("");
+      const video = url === undefined ? `<div class="muted">영상 정리 중…</div>` : url ? `<video id="clip-${i}" src="${url}" controls playsinline preload="metadata"></video>` : `<div class="muted">녹화 영상 없음${S.recError ? ` (${esc(S.recError)})` : ""}</div>`;
+      return `<div class="evidence"><h3>질문 ${i + 1}${S.asked[i]?.kind === "follow" ? " · 꼬리질문" : ""}</h3>${video}<div class="moments">${moments}</div></div>`;
+    })
+    .join("");
+  return `<h2>경고 장면 다시 보기</h2>
+    <p style="opacity:.75;font-size:14px">경고가 시작되기 ${CLIP_LEAD_SEC}초 전부터 재생돼요. 영상은 이 브라우저 메모리에만 있고 어디에도 보내지 않아요. 창을 닫으면 사라져요.</p>${blocks}`;
 }
 
 function coverageHtml() {
@@ -350,6 +382,17 @@ function bindPage() {
     S.voice = new VoiceSetup();
     go("setup");
   });
+  app.querySelectorAll<HTMLButtonElement>(".moment").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const v = $<HTMLVideoElement>(`#clip-${b.dataset.q}`);
+      if (!v) return;
+      if (v.readyState < 1) await new Promise((r) => v.addEventListener("loadedmetadata", r, { once: true }));
+      await fixDuration(v);
+      v.currentTime = Number(b.dataset.t);
+      v.scrollIntoView({ behavior: "smooth", block: "center" });
+      void v.play();
+    }),
+  );
   $("#download")?.addEventListener("click", () => {
     const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })) }, null, 2)], { type: "application/json" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `면접코치-${Date.now()}.json` });
@@ -393,14 +436,26 @@ function go(phase: Phase) {
     const v = S.voice;
     S.coach = new AnswerCoach(base, { noiseRms: v.noiseRms!, noiseDb: v.noiseDb!, voiceDb: v.voiceDb! }, S.phaseAt, curQ());
     startStt();
+    startRecording();
   }
   render();
 }
 
 function startStt() {
   S.stt?.stop(0);
-  S.stt = new Transcriber(S.sttMode);
+  S.stt = new Transcriber(S.sttMode, (text) => {
+    const live = $("#stt-live");
+    if (live) live.textContent = `받아쓰는 중 · ${text.length}자 · “${text.slice(-30)}”`;
+  });
   S.stt.start();
+}
+
+function startRecording() {
+  const cam = S.video?.srcObject as MediaStream | null;
+  if (!cam) return;
+  S.rec = new AnswerRecorder();
+  S.rec.start(new MediaStream([...cam.getVideoTracks(), ...(S.mic?.stream.getAudioTracks() ?? [])]));
+  if (S.rec.error) S.recError = S.rec.error;
 }
 
 function endAnswer() {
@@ -414,9 +469,15 @@ function endAnswer() {
     S.transcripts[qi] = t;
     if (S.phase === "result") render();
   });
+  const rec = S.rec;
+  S.rec = null;
+  void (rec ? rec.stop() : Promise.resolve(null)).then((url) => {
+    S.clips[qi] = url;
+    if (S.phase === "result") render();
+  });
   S.results.push(S.coach.finish(now()));
   S.coach = null;
-  if (asked.kind === "main") return void nextFollowup(asked, text);
+  if (asked.kind === "main") return void nextFollowup(asked, text, stt?.error ?? "");
   if (mainCount() < ROUNDS) {
     askMain();
     go("question");
@@ -424,7 +485,7 @@ function endAnswer() {
 }
 
 /** 본질문 답변이 끝나면: 받아쓰기 마무리 → 규칙이 빈 곳 찾기 → 이 PC 안 AI가 꼬리질문 한 문장 */
-async function nextFollowup(main: Asked, text: Promise<string>) {
+async function nextFollowup(main: Asked, text: Promise<string>, sttError: string) {
   go("followup");
   const t0 = performance.now();
   const answer = await text;
@@ -433,6 +494,7 @@ async function nextFollowup(main: Asked, text: Promise<string>) {
     ask: followupAsker(),
     history,
   });
+  if (!answer && S.sttMode !== "none") f.error = `답변을 받아쓰지 못했어요${sttError ? ` (${sttError === "network" ? "인터넷 연결 문제" : sttError})` : " (말소리가 안 들렸거나 마이크 문제)"}`;
   saveHistory(S.input.resume, f.question);
   S.asked.push({ text: f.question, kind: "follow", type: main.type, source: f.source, evidence: main.evidence, reason: f.reason, issues: f.issues, error: f.error, ms: performance.now() - t0 });
   if (S.phase === "followup") go("question");

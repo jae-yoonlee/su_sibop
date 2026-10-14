@@ -20,6 +20,7 @@ export interface AnswerStats {
   question: string;
   durationS: number;
   alerts: { name: string; label: string; count: number; seconds: number; shown: number }[];
+  events: { name: string; start: number; end: number }[]; // 경고 구간 (답변 시작 기준 초) → 녹화 영상에서 그 순간 재생
   log: GateLog[];
 }
 
@@ -74,6 +75,10 @@ export class AnswerCoach {
       question: this.question,
       durationS: Math.round((t - this.start) * 10) / 10,
       alerts,
+      events: events
+        .filter((e) => e.name in ALERT_LABELS)
+        .map((e) => ({ name: e.name, start: Math.round((e.start - this.start) * 10) / 10, end: Math.round((e.end - this.start) * 10) / 10 }))
+        .sort((a, b) => a.start - b.start),
       log: this.gate.log.map((l) => ({ ...l, t: Math.round((l.t - this.start) * 100) / 100 })),
     };
   }

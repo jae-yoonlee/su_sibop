@@ -13,11 +13,31 @@ describe("꼬리질문 규칙: 답변의 빈 곳", () => {
   it("빈 곳을 우선순위대로 모두 찾음", () => {
     expect(names(MAIN, ANSWER)).toEqual(["mismatch", "no_role", "vague"]);
   });
+  it("답변 내용의 빈 곳에는 인용할 답변 문장이 붙음", () => {
+    const vague = findIssues(MAIN, ANSWER).find((i) => i.name === "vague")!;
+    expect(vague.slots.quote).toBe("우리가 열심히 노력했습니다");
+    expect(findIssues(MAIN, ANSWER).find((i) => i.name === "no_role")!.slots.quote).toContain("저희 팀이 함께");
+  });
+  it("답변 내용의 빈 곳이 자소서 숫자 누락보다 먼저", () => {
+    const issues = findIssues(MAIN, "제가 지연률을 12% 줄였는데 우리가 열심히 노력했습니다.");
+    expect(issues.map((i) => i.name)).toEqual(["vague", "missing_fact"]);
+    expect(chooseIssue(issues, first).name).toBe("vague");
+  });
+  it("받아쓴 답이 없으면 자소서로 묻지 않고 다시 말해 달라고 함", () => {
+    expect(names(MAIN, "")).toEqual(["no_text"]);
+    expect(templateQuestion(chooseIssue(findIssues(MAIN, ""), first), first)).toContain("다시");
+  });
+  it("빈 곳이 없으면 답변의 가장 긴 문장을 짚음", () => {
+    const main = { ...MAIN, type: "직무", evidence: "분석 역량이 있습니다." };
+    const issue = chooseIssue(findIssues(main, "제가 직접 고객 데이터를 분석해서 보고서를 썼습니다."), first, new Set(), "제가 직접 고객 데이터를 분석해서 보고서를 썼습니다.");
+    expect(issue.name).toBe("generic");
+    expect(templateQuestion(issue, first)).toContain("고객 데이터를");
+  });
   it("'퍼센트'도 %로 봄", () => {
     expect(names(MAIN, "제가 6개월 동안 지연률을 12퍼센트 줄였습니다.")).not.toContain("mismatch");
   });
   it("자소서 숫자를 말하지 않음", () => {
-    expect(findIssues(MAIN, "제가 팀장으로 지연률을 12% 줄였습니다.")[0]).toEqual({ name: "missing_fact", slots: { doc: "6개월" } });
+    expect(findIssues(MAIN, "제가 팀장으로 지연률을 12% 줄였습니다.")[0]).toMatchObject({ name: "missing_fact", slots: { doc: "6개월" } });
   });
   it("날짜(2023년 3월)는 숫자 확인 대상이 아님", () => {
     expect(findIssues({ ...MAIN, evidence: "2023년 3월부터 6개월 동안 팀장을 맡았습니다." }, "제가 팀장을 6개월 했고 30% 줄였습니다.")).toEqual([]);
@@ -36,8 +56,8 @@ describe("꼬리질문 규칙: 답변의 빈 곳", () => {
   it("정해진 문장: 숫자 두 개와 받침에 맞는 조사", () => {
     const q = templateQuestion(chooseIssue(findIssues(MAIN, ANSWER), first), first);
     expect(q).toBe("자기소개서에는 12%라고 쓰셨는데 방금 20%라고 하셨습니다. 어느 쪽이 맞나요?");
-    const q2 = templateQuestion({ name: "missing_fact", slots: { doc: "6개월" } }, first);
-    expect(q2).toContain("6개월이라고");
+    const q2 = templateQuestion({ name: "missing_fact", slots: { doc: "6개월", quote: "제가 팀장을 맡았습니다" } }, first);
+    expect(q2).toBe("'제가 팀장을 맡았습니다'라고 하셨는데, 자기소개서에 적은 6개월과는 어떻게 이어지나요?");
   });
 });
 
@@ -53,7 +73,7 @@ describe("꼬리질문 AI 검사", () => {
   });
   it.each([
     ['{"question":"3개월 만에 어떻게 줄이셨나요?"}', "없던 숫자"],
-    [`{"question":"${"가".repeat(61)}요?"}`, "너무 김"],
+    [`{"question":"열심히 ${"가".repeat(80)}요?"}`, "너무 김"],
     ['{"question":"팀장이었습니다."}', "존댓말 물음"],
     ["JSON 아님", "형식"],
   ])("떨어짐: %s", (raw, why) => {
@@ -67,8 +87,15 @@ describe("꼬리질문 AI 검사", () => {
 
 describe("꼬리질문 만들기", () => {
   it("AI가 쓴 문장을 씀", async () => {
-    const f = await makeFollowup(MAIN, SOFT, { ask: async () => '{"question":"본인이 직접 맡았던 일은 무엇이었나요?"}', rand: first });
-    expect(f).toMatchObject({ source: "ai", reason: "no_role", question: "본인이 직접 맡았던 일은 무엇이었나요?" });
+    const q = "팀이 지연률을 줄일 때 본인이 직접 맡았던 일은 무엇이었나요?";
+    const f = await makeFollowup(MAIN, SOFT, { ask: async () => JSON.stringify({ question: q }), rand: first });
+    expect(f).toMatchObject({ source: "ai", reason: "no_role", question: q });
+  });
+  it("AI가 답변과 상관없는 질문을 쓰면 답변을 인용한 정해진 문장", async () => {
+    const f = await makeFollowup(MAIN, SOFT, { ask: async () => '{"question":"본인의 장점은 무엇인가요?"}', rand: first });
+    expect(f.source).toBe("rule");
+    expect(f.error).toContain("짚지");
+    expect(f.question).toContain("저희 팀이 함께");
   });
   it("AI가 늦으면 정해진 문장으로, 이유를 남김", async () => {
     const t0 = performance.now();

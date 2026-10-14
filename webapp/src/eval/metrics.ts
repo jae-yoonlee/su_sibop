@@ -12,19 +12,28 @@ export interface CompetencyScore { id: string; name: string; tp: number; fp: num
 
 const ratio = (a: number, b: number) => (b ? a / b : NaN);
 
-export function competencyEval(cases: Case[]) {
+export type Finder = (resume: string) => string[];
+export const byWords: Finder = (r) => findCompetencies(r).map((h) => h.id);
+export const byContext: Finder = (r) => findCompetencies(r, true).map((h) => h.id);
+
+/** 규칙을 맞출 때 본 절반(1·3·5…번째)과 한 번도 안 본 절반(2·4·6…번째). 점수는 안 본 절반으로 말한다 */
+export function splitCases(cases: Case[]) {
+  return { dev: cases.filter((_, i) => i % 2 === 0), test: cases.filter((_, i) => i % 2 === 1) };
+}
+
+export function competencyEval(cases: Case[], find: Finder = byContext, found?: Map<string, string[]>) {
   const per = new Map(COMPETENCIES.map((c) => [c.id, { tp: 0, fp: 0, fn: 0 }]));
   const rows = cases.map((c) => {
-    const found = findCompetencies(c.resume).map((h) => h.id);
+    const got = found?.get(c.id) ?? find(c.resume);
     const gold = new Set(c.labels);
     for (const id of per.keys()) {
       const p = per.get(id)!;
-      const f = found.includes(id), g = gold.has(id);
+      const f = got.includes(id), g = gold.has(id);
       if (f && g) p.tp++;
       else if (f) p.fp++;
       else if (g) p.fn++;
     }
-    return { id: c.id, found, missed: c.labels.filter((l) => !found.includes(l)), extra: found.filter((f) => !gold.has(f)) };
+    return { id: c.id, found: got, missed: c.labels.filter((l) => !got.includes(l)), extra: got.filter((f) => !gold.has(f)) };
   });
   const scores: CompetencyScore[] = COMPETENCIES.map((c) => {
     const p = per.get(c.id)!;

@@ -1,4 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// 테스트에서는 뜻 비교 모델을 받지 않는다 (받지 못한 경우와 같음)
+vi.mock("../report/embed", async (orig) => {
+  const m = await orig<typeof import("../report/embed")>();
+  return { ...m, preloadEmbedder: async () => null, similarity: async (a: string[], b: string[]) => ({ sim: a.map((x) => b.map((y) => m.charSim(x, y))), mode: "fallback" as const }) };
+});
 import { checkResume, findCompetencies, requiredFromRules } from "./competency";
 import { parseRequired } from "./gemini";
 import { parseAiQuestions, questionPrompt, questionProblem, questionSlots, quoteClause, ruleQuestions } from "./questions";

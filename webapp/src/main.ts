@@ -254,7 +254,7 @@ function prepCard() {
   return `<div class="prep-card" id="prep-card">
     ${row(p.steps.rules, "채용공고 단어 찾기")}
     ${row(p.steps.gemini, "필요역량 정리 (Gemini)", p.note.gemini ?? (p.steps.gemini === "skip" ? "키 없음 → 규칙으로 정리" : ""))}
-    ${row(p.steps.resume, "자소서와 대조")}
+    ${row(p.steps.resume, "자소서와 대조 (단어·문맥·뜻)", p.note.resume ?? "")}
     ${row(p.done ? (p.questionsBy === "ai" ? "done" : "fail") : p.steps.questions, `질문 3개 만들기${ai}`, p.note.questions ?? "")}
   </div>`;
 }
@@ -447,7 +447,7 @@ function coverageHtml() {
   return `<div class="card-dark" style="margin-bottom:16px">
     <h2 style="margin-top:0">필요역량 ↔ 자소서 <span class="badge">${hit} / ${p.coverage.length} 근거 있음</span></h2>
     <table><tr><th>필요역량</th><th>공고 근거</th><th>자소서에서 찾은 단어</th></tr>
-    ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? esc(c.found.join(", ")) : "<span style='color:var(--magenta)'>근거 없음</span>"}</td></tr>`).join("")}
+    ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? `${c.via && c.via !== "단어" ? `<span class="badge">${c.via}</span> ` : ""}${esc(c.found.join(", "))}${c.via !== "단어" && c.evidence ? `<div class="fact-src">${esc(c.evidence)}</div>` : ""}` : "<span style='color:var(--magenta)'>근거 없음</span>"}</td></tr>`).join("")}
     </table>
     <p style="opacity:.75;font-size:14px">정리: ${p.requiredBy === "gemini" ? "Gemini + 규칙" : "규칙 사전(NCS 직업기초능력)"} · 질문: ${p.questionsBy === "ai" ? "브라우저 안 AI" : "규칙"}. 답변과의 비교는 다음 단계에서 붙어요.</p>
   </div>`;

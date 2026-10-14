@@ -5,8 +5,10 @@ import "./eval.css";
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
 import { createEngine, generateQuestions } from "../prep/llm";
 import { AI_DEADLINE_SEC } from "../prep/pipeline";
+import { findAll } from "../prep/semantic";
+import { embedError } from "../report/embed";
 import {
-  blindSheets, caseInput, competencyEval, csv, parseCsv, scoreAiAnswer, scoreSheets, summarize,
+  blindSheets, byContext, byWords, caseInput, competencyEval, csv, splitCases, parseCsv, scoreAiAnswer, scoreSheets, summarize,
   type Dataset, type QuestionRun,
 } from "./metrics";
 
@@ -37,6 +39,7 @@ const S = {
   runs: [] as QuestionRun[],
   loadMs: {} as Record<string, number>,
   errors: {} as Record<string, string>,
+  sem: null as null | "running" | { found: Map<string, string[]>; mode: "model" | "fallback"; ms: number }, // 뜻 비교 포함 결과
   scored: null as ReturnType<typeof scoreSheets> | null,
   scoreErr: "",
 };
@@ -50,6 +53,43 @@ function download(name: string, text: string, type = "text/csv;charset=utf-8") {
 }
 const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
 const modelId = (base: string) => `${base}-${S.device.f16 ? "q4f16_1" : "q4f32_1"}-MLC`;
+
+// ── 역량 찾기 방식 비교: 단어만 / +문맥 규칙 / +뜻 비교. 규칙을 맞출 때 본 절반과 안 본 절반을 따로 ──
+function methodsHtml() {
+  const { dev, test } = splitCases(S.ds!.cases);
+  const sem = typeof S.sem === "object" && S.sem ? S.sem : null;
+  const rows: [string, Parameters<typeof competencyEval>[1], Map<string, string[]> | undefined][] = [
+    ["단어 사전만 (예전)", byWords, undefined],
+    ["단어 + 문맥 규칙 (지금 앱)", byContext, undefined],
+  ];
+  if (sem) rows.push([`단어 + 문맥 + 뜻 비교 (${sem.mode === "model" ? "의미 모델" : "모델 못 받음 → 문맥까지만"})`, byContext, sem.found]);
+  const cell = (cs: typeof dev, f: (typeof rows)[0][1], m?: Map<string, string[]>) => {
+    const r = competencyEval(cs, f, m);
+    return `<td>${pct(r.precision)}</td><td><b>${pct(r.recall)}</b></td>`;
+  };
+  return `
+    <h3>찾는 방식별 비교</h3>
+    <p class="muted">문맥 규칙은 1·3·5…번째 자소서만 보고 만들었습니다. 그래서 <b>2·4·6…번째(안 본 절반)</b> 점수가 실제 실력에 가깝습니다. 두 쪽 차이가 크면 규칙이 본 자료에만 맞춰진 것입니다.</p>
+    <table><thead><tr><th>방식</th><th>본 절반 정확도</th><th>본 절반 재현율</th><th>안 본 절반 정확도</th><th>안 본 절반 재현율</th></tr></thead><tbody>
+    ${rows.map(([name, f, m]) => `<tr><td>${name}</td>${cell(dev, f, m)}${cell(test, f, m)}</tr>`).join("")}
+    </tbody></table>
+    ${sem ? `<p class="muted">뜻 비교 ${sec(sem.ms)}${sem.mode === "fallback" ? ` · 모델 오류: ${esc(embedError || "알 수 없음")}` : ""}</p>` : `<button class="btn-green" id="semrun" ${S.sem === "running" ? "disabled" : ""}>${S.sem === "running" ? "뜻 비교 중… (처음엔 모델 약 150MB 받음)" : "뜻 비교까지 측정"}</button>`}`;
+}
+
+async function runSemantic() {
+  S.sem = "running";
+  render();
+  const t0 = performance.now();
+  const found = new Map<string, string[]>();
+  let mode: "model" | "fallback" = "model";
+  for (const c of S.ds!.cases) {
+    const r = await findAll(c.resume);
+    found.set(c.id, r.ids);
+    if (r.mode === "fallback") mode = "fallback";
+  }
+  S.sem = { found, mode, ms: performance.now() - t0 };
+  render();
+}
 
 // ── 화면 ─────────────────────────────────────────────
 
@@ -81,7 +121,8 @@ function render() {
       <details><summary>자소서별로 놓친 것·잘못 찾은 것</summary>
       <table><tbody>${comp.rows.filter((r) => r.missed.length || r.extra.length).map((r) => `<tr><td>${r.id}</td><td>놓침: ${r.missed.join(", ") || "-"}</td><td>잘못 찾음: ${r.extra.join(", ") || "-"}</td></tr>`).join("")}</tbody></table>
       </details>
-      <button class="btn-primary" id="dlcomp">역량 결과 CSV</button>` : "<p>자료를 불러오는 중…</p>"}
+      <button class="btn-primary" id="dlcomp">역량 결과 CSV</button>
+      ${methodsHtml()}` : "<p>자료를 불러오는 중…</p>"}
     </section>
 
     <section class="card-dark">
@@ -142,6 +183,7 @@ function bind() {
       const d = JSON.parse(await f.text()) as Dataset;
       if (!Array.isArray(d.cases) || !Array.isArray(d.postings)) throw new Error("cases·postings 목록이 없어요");
       S.ds = d;
+      S.sem = null;
       S.dsName = f.name;
     } catch (err) {
       alert(`자료를 읽지 못했어요: ${(err as Error).message}`);
@@ -154,6 +196,7 @@ function bind() {
   $("nCase")?.addEventListener("change", (e) => (S.caseLimit = Number((e.target as HTMLSelectElement).value)));
   $("nRun")?.addEventListener("change", (e) => (S.runsPer = Number((e.target as HTMLSelectElement).value)));
   $("start")?.addEventListener("click", () => void runAll());
+  $("semrun")?.addEventListener("click", () => void runSemantic());
 
   $("dlcomp")?.addEventListener("click", () => {
     const c = competencyEval(S.ds!.cases);

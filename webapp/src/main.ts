@@ -12,7 +12,9 @@ import { ALERT_LABELS, AnswerCoach, type AnswerStats } from "./rules/session";
 import { toDb } from "./rules/stats";
 import { VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
 import { GEMINI_MODEL } from "./prep/gemini";
-import { followupAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
+import { checkFacts, extractFacts, RECHECK_SCHEMA, type FactResult } from "./report/facts";
+import { preloadEmbedder } from "./report/embed";
+import { followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
 import { FOLLOWUP_TARGET_SEC, ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
 import { runPrep, type PrepState, type StepState } from "./prep/pipeline";
 
@@ -71,6 +73,8 @@ const S = {
   rec: null as AnswerRecorder | null,
   clips: [] as (string | null)[], // 질문별 답변 녹화 (blob: 주소, 이 브라우저 메모리에만)
   recError: "",
+  facts: null as null | "running" | { rows: FactResult[]; mode: "model" | "fallback"; ms: number }, // 자소서 ↔ 답변 사실 대조
+  factOff: new Set<string>(), // 사용자가 대조에서 뺀 항목
 };
 const cur = () => S.asked[S.asked.length - 1];
 const curQ = () => cur()?.text ?? "";
@@ -87,6 +91,8 @@ function resetRun() {
   S.clips.forEach((u) => u && URL.revokeObjectURL(u));
   S.clips = [];
   S.recError = "";
+  S.facts = null;
+  S.factOff.clear();
 }
 
 type Grade = "ok" | "warn" | "bad";
@@ -291,6 +297,7 @@ function resultHtml() {
       </table>
       <p style="opacity:.75;font-size:14px">판정: 경고 종류별로 ${TOTAL}문항 전체에서 ${WARN_COUNT - 1}회까지 정상, ${WARN_COUNT}~${PROBLEM_COUNT - 1}회 주의, ${PROBLEM_COUNT}회 이상 문제. 알림은 답변을 방해하지 않게 20초에 하나, 1분에 2개까지만 띄우지만, 못 띄운 경고도 여기에는 모두 들어가요.</p>
       ${evidenceHtml()}
+      ${factsHtml()}
       <h2>질문별</h2>
       <table>${perQ}</table>
     </div>
@@ -304,6 +311,45 @@ function resultHtml() {
         prep: S.prep && { timings: S.prep.timings, requiredBy: S.prep.requiredBy, questionsBy: S.prep.questionsBy, llm: llmState.kind, notes: S.prep.note },
         noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), stt: { mode: S.sttMode, check: S.sttCheck }, camera: S.cam.warnings, ua: navigator.userAgent }, null, 2)}</pre></details>
   </div></div>`;
+}
+
+// ── 자소서 ↔ 답변 사실 대조 ──
+const VERDICT_CLASS: Record<string, string> = { 일치: "ok", 불일치: "bad", "말 안 함": "none", "확인 필요": "warn" };
+
+/** 받아쓰기가 다 모이면 한 번 돈다. 자소서·답변은 이 PC 안에서만 비교 */
+function runFactCheck() {
+  if (S.facts !== null || S.sttMode === "none" || S.results.length === 0) return;
+  if (S.results.some((_, i) => S.transcripts[i] === undefined)) return;
+  const facts = extractFacts(S.input.resume);
+  S.facts = "running";
+  const t0 = performance.now();
+  void checkFacts(facts, S.transcripts, { ask: jsonAsker(RECHECK_SCHEMA, 80) })
+    .then((r) => (S.facts = { ...r, ms: performance.now() - t0 }))
+    .catch(() => (S.facts = { rows: [], mode: "fallback", ms: 0 }))
+    .finally(() => S.phase === "result" && render());
+}
+
+function factsHtml() {
+  const head = `<h2>자소서와 답변 사실 대조</h2>`;
+  if (S.sttMode === "none") return `${head}<div class="muted">받아쓰기가 안 돼서 대조할 수 없어요.</div>`;
+  if (S.facts === null || S.facts === "running") return `${head}<div class="muted">답변과 자소서를 비교하는 중… (이 PC 안에서)</div>`;
+  const { rows, mode, ms } = S.facts;
+  if (!rows.length) return `${head}<div class="muted">자소서에서 기간·숫자·역할·프로젝트명을 찾지 못했어요.</div>`;
+  const used = rows.filter((r) => !S.factOff.has(r.id));
+  const count = (v: string) => used.filter((r) => r.verdict === v).length;
+  const tr = rows
+    .map((r) => {
+      const off = S.factOff.has(r.id);
+      return `<tr class="${off ? "off" : ""}"><td><input type="checkbox" data-fact="${r.id}" ${off ? "" : "checked"} aria-label="대조에 넣기"></td>
+        <td>${r.kind}</td><td><b>${esc(r.text)}</b><div class="fact-src">${esc(r.sentence)}</div></td>
+        <td><span class="grade ${VERDICT_CLASS[r.verdict]}">${r.verdict}</span>${r.said ? `<div>답변: <b>${esc(r.said)}</b></div>` : ""}</td>
+        <td>${r.answerSentence ? `질문 ${r.q + 1}: “${esc(r.answerSentence)}”` : ""}<div class="fact-src">${esc(r.note)}</div></td></tr>`;
+    })
+    .join("");
+  return `${head}
+    <p class="facts-sum"><b>${count("일치")}</b> 일치 · <b>${count("불일치")}</b> 불일치 · <b>${count("말 안 함")}</b> 말 안 함 · <b>${count("확인 필요")}</b> 확인 필요 <span class="muted">(고른 ${used.length}개 기준)</span></p>
+    <table class="facts"><tr><th></th><th>종류</th><th>자소서</th><th>판정</th><th>답변 근거</th></tr>${tr}</table>
+    <p style="opacity:.75;font-size:14px">같은 경험을 말한 답변 문장은 ${mode === "model" ? "문장 의미 모델(이 PC 안)" : "글자 비교(의미 모델을 못 받아서 대신 씀)"}로 찾고, 숫자·역할은 규칙으로 맞춰 봐요. 불일치는 이 PC 안 AI가 같은 경험인지 한 번 더 봐요. 체크를 풀면 그 항목은 집계에서 빠져요. ${(ms / 1000).toFixed(1)}초</p>`;
 }
 
 // ── 경고 장면 클립 (다시보기) ──
@@ -453,8 +499,18 @@ function bindPage() {
     go("setup");
   });
   bindReplay();
+  runFactCheck();
+  app.querySelectorAll<HTMLInputElement>("input[data-fact]").forEach((el) =>
+    el.addEventListener("change", () => {
+      const y = window.scrollY;
+      if (el.checked) S.factOff.delete(el.dataset.fact!);
+      else S.factOff.add(el.dataset.fact!);
+      render();
+      window.scrollTo(0, y);
+    }),
+  );
   $("#download")?.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })) }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })), factCheck: typeof S.facts === "object" && S.facts ? { mode: S.facts.mode, rows: S.facts.rows.map((f) => ({ ...f, used: !S.factOff.has(f.id) })) } : null }, null, 2)], { type: "application/json" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `면접코치-${Date.now()}.json` });
     a.click();
   });
@@ -497,6 +553,7 @@ function go(phase: Phase) {
     S.coach = new AnswerCoach(base, { noiseRms: v.noiseRms!, noiseDb: v.noiseDb!, voiceDb: v.voiceDb! }, S.phaseAt, curQ());
     startStt();
     startRecording();
+    void preloadEmbedder(); // 결과 화면 사실 대조용 뜻 비교 모델을 면접 중에 미리 받음
   }
   render();
 }

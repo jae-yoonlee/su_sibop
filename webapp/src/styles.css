@@ -193,3 +193,10 @@ pre { white-space: pre-wrap; font: 12px/1.5 var(--num); }
 .clip .clip-q { font-size: 12px; opacity: .7; }
 .clip b { font-size: 15px; }
 .clip .grade { justify-self: start; }
+
+/* 사실 대조 */
+.grade.none { background: rgba(255,255,255,.12); color: #fff; }
+.facts td { vertical-align: top; }
+.facts tr.off { opacity: .4; }
+.fact-src { font-size: 13px; opacity: .65; margin-top: 4px; }
+.facts-sum b { font-size: 22px; }

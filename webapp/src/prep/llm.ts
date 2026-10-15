@@ -101,4 +101,20 @@ export function followupAsker(): ((prompt: string) => Promise<string>) | null {
   };
 }
 
+/** 짧은 JSON 답 하나 (사실 대조 재확인 등). 모델이 아직 준비 안 됐으면 null → 규칙 판정만 */
+export function jsonAsker(schema: string, maxTokens: number): ((prompt: string) => Promise<string>) | null {
+  if (!engine || llmState.kind !== "ready") return null;
+  const e = engine;
+  return async (prompt) => {
+    const res = await e.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+      max_tokens: maxTokens,
+      response_format: { type: "json_object", schema },
+      extra_body: { enable_thinking: false },
+    });
+    return res.choices[0]?.message?.content ?? "";
+  };
+}
+
 export const currentModel = () => modelId;

@@ -2,11 +2,15 @@
 import { checkResume, findCompetencies, requiredFromRules, type Coverage, type Hit } from "./competency";
 import { summarizeRequired } from "./gemini";
 import { aiQuestions, preloadLlm } from "./llm";
+import { addSemantic } from "./semantic";
+import { preloadEmbedder } from "../report/embed";
 import { parseAiQuestions, ruleQuestions, type Question } from "./questions";
 
 // 목표 시간 (검증 페이지 기준). 자소서 질문은 로컬 AI가 꼭 쓰도록(2026-10-12 결정) 시간이 지나도 규칙으로 넘기지 않고 기다린다.
 // 규칙 질문은 AI를 아예 못 쓸 때(그래픽 가속 없음·오류)만, 화면에 그렇게 표시하고 쓴다.
 export const AI_DEADLINE_SEC = 60;
+// 뜻 비교 모델(처음 한 번 약 150MB)을 기다리는 최대 시간. 넘으면 단어·문맥 규칙 결과로 질문을 만든다 (다음 번엔 캐시돼서 빠름)
+export const SEMANTIC_WAIT_MS = 6000;
 
 export interface PrepInput {
   posting: string;
@@ -17,7 +21,7 @@ export interface PrepInput {
 export type StepState = "wait" | "run" | "done" | "skip" | "fail";
 export interface PrepState {
   steps: { rules: StepState; gemini: StepState; resume: StepState; questions: StepState };
-  note: Partial<Record<"gemini" | "questions", string>>;
+  note: Partial<Record<"gemini" | "questions" | "resume", string>>;
   hits: Hit[];
   coverage: Coverage[];
   questions: Question[]; // 항상 3개 (처음엔 규칙 질문, AI가 되면 교체)
@@ -43,6 +47,7 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
   };
   const emit = () => onChange({ ...s, steps: { ...s.steps } });
 
+  void preloadEmbedder();
   // 1) 규칙: 즉시
   s.hits = findCompetencies(input.posting);
   let required = requiredFromRules(input.posting);
@@ -78,8 +83,18 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
       }
       s.timings.gemini = sec();
     }
-    // 3) 자소서 대조 (이 PC 안)
+    // 3) 자소서 대조 (이 PC 안): 단어 → 문맥 규칙 → 뜻 비교
     s.coverage = checkResume(required, input.resume);
+    s.steps.resume = "run";
+    emit();
+    const sem = await Promise.race([addSemantic(s.coverage, input.resume), new Promise<null>((r) => setTimeout(() => r(null), SEMANTIC_WAIT_MS))]);
+    if (!sem) s.note.resume = "뜻 비교 모델을 받는 중이라 단어·문맥 규칙으로만 대조했어요";
+    else if (sem.mode === "fallback") s.note.resume = "뜻 비교 모델을 못 받아 단어·문맥 규칙으로만 대조했어요";
+    else {
+      s.coverage = sem.coverage;
+      if (sem.added) s.note.resume = `뜻 비교로 근거 ${sem.added}개 더 찾음`;
+    }
+    s.timings.resume = sec();
     s.steps.resume = "done";
     if (!s.done) s.questions = ruleQuestions(input.resume, s.coverage);
     emit();

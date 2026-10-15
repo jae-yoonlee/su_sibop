@@ -73,3 +73,8 @@ export const PENDING_MAX_SEC = 8.0;
 // ── 면접 진행
 export const QUESTION_SEC = 30;
 export const ANSWER_SEC = 60;
+
+// ── 결과 등급 [사용자 결정 2026-10-14] 경고 종류별로 4문항 전체 횟수를 셈
+export const WARN_COUNT = 3; // 이 횟수부터 '주의'
+export const PROBLEM_COUNT = 5; // 이 횟수부터 '문제'
+export const CLIP_LEAD_SEC = 2; // 증거 영상은 경고가 시작되기 이만큼 전부터 재생

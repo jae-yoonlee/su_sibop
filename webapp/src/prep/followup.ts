@@ -1,11 +1,13 @@
-// 꼬리질문: 규칙이 답변의 빈 곳을 찾고(빠름·항상 같은 결과), 브라우저 안 AI(Qwen3)는 그중 고른 하나로 질문 한 문장만 쓴다.
+// 꼬리질문: 규칙이 답변의 빈 곳과 '인용할 답변 문장'을 고르고(빠름·항상 같은 결과), 브라우저 안 AI(Qwen3)는 그 문장을 짚는 질문 한 문장만 쓴다.
+// 2026-10-14: 꼬리질문은 반드시 방금 답변을 인용한다 (자소서 숫자만 보고 묻던 것이 '답변을 안 본다'는 지적을 받음).
 // poc/face-realtime/followup_gen.py의 규칙·문장 틀·검사를 옮김. 차이: 파이썬은 사실 확인(숫자)을 AI 없이 틀 문장으로 물었지만,
 // 여기서는 자소서 관련 질문은 로컬 AI가 쓰도록(2026-10-12 결정) AI에 정해진 이유 하나만 주고, 검사에 떨어지거나 늦을 때만 틀 문장을 쓴다.
 import type { Question } from "./questions";
 
 export const FOLLOWUP_TARGET_SEC = 5; // 답변이 끝나고 이 안에 꼬리질문을 띄우는 것이 목표
 export const FOLLOWUP_MAX_SEC = 12; // AI가 이때까지도 못 쓰면 틀 문장 (화면·결과에 표시)
-const MAX_LEN = 60;
+const MAX_LEN = 80; // 답변 인용이 들어가므로 본질문(70자)보다 조금 길게
+const QUOTE_LEN = 28; // 인용은 이 글자 수까지
 const ANSWER_CHARS = 500; // AI에 넣는 답변 길이 상한 (짧을수록 빠름)
 
 const UNITS = "(%|퍼센트|프로|개월|년|월|주|일|명|배|건|개|원|시간|분)";
@@ -16,7 +18,7 @@ const SELF = /(제가|저는|저도|직접|맡아|맡았|담당)/g;
 const TEAM = /(우리|저희|팀이|팀원들이|다 같이|함께)/g;
 const RESULT_WORDS = /\d|절반|두\s?배|세\s?배/;
 
-export type IssueName = "mismatch" | "missing_fact" | "no_result" | "no_role" | "team_heavy" | "vague" | "generic";
+export type IssueName = "mismatch" | "missing_fact" | "no_result" | "no_role" | "team_heavy" | "vague" | "generic" | "no_text";
 export interface Issue { name: IssueName; slots: Record<string, string> }
 
 export const ISSUE_LABELS: Record<IssueName, string> = {
@@ -26,18 +28,20 @@ export const ISSUE_LABELS: Record<IssueName, string> = {
   no_role: "본인이 한 일을 말하지 않음",
   team_heavy: "'우리·팀' 위주라 본인 기여 비중이 불분명",
   vague: "모호한 표현",
-  generic: "특별한 빈 곳 없음",
+  generic: "특별한 빈 곳 없음 → 답변 한 부분을 더 깊게",
+  no_text: "답변을 받아쓰지 못함",
 };
 
 // AI에 줄 '무엇을 물을지' 지시 (이유마다 한 줄)
 const INTENT: Record<IssueName, (s: Record<string, string>) => string> = {
   mismatch: (s) => `자기소개서에는 ${s.doc}, 답변에서는 ${s.said}라고 했다. 어느 쪽이 맞는지 확인하라.`,
-  missing_fact: (s) => `자기소개서에 적은 ${s.doc}에 대해 답변에서 말하지 않았다. 그 숫자가 어떻게 나왔는지 물어라.`,
-  no_result: () => "결과를 숫자로 말하지 않았다. 성과를 수치로 묻는다.",
-  no_role: () => "본인이 직접 한 일을 말하지 않았다. 본인 역할을 묻는다.",
-  team_heavy: () => "'우리·팀' 이야기뿐이라 본인 기여가 불분명하다. 본인 기여 비중을 묻는다.",
-  vague: (s) => `'${s.quote}'라는 모호한 표현을 구체적인 행동이나 숫자로 묻는다.`,
-  generic: () => "답변에서 가장 구체적이지 않은 부분을 하나 골라 더 깊게 묻는다.",
+  missing_fact: (s) => `답변의 '${s.quote}' 부분과 자기소개서에 적은 ${s.doc}가 어떻게 연결되는지 물어라.`,
+  no_result: (s) => `답변의 '${s.quote}' 부분에 결과 수치가 없다. 그 결과를 숫자로 묻는다.`,
+  no_role: (s) => `답변의 '${s.quote}' 부분에서 본인이 직접 한 일이 안 보인다. 본인 역할을 묻는다.`,
+  team_heavy: (s) => `답변의 '${s.quote}'처럼 '우리·팀' 이야기뿐이라 본인 기여가 불분명하다. 본인 기여 비중을 묻는다.`,
+  vague: (s) => `답변의 '${s.quote}'라는 모호한 표현을 구체적인 행동이나 숫자로 묻는다.`,
+  generic: (s) => `답변의 '${s.quote}' 부분을 더 깊게 묻는다 (어려웠던 점, 판단 이유, 구체적 행동 중 하나).`,
+  no_text: () => "답변을 받아쓰지 못했다. 방금 답변의 핵심을 다시 묻는다.",
 };
 
 const TEMPLATES: Record<IssueName, string[]> = {
@@ -46,14 +50,15 @@ const TEMPLATES: Record<IssueName, string[]> = {
     "방금 {said_라고} 하셨는데 자기소개서에는 {doc_로} 되어 있습니다. 설명해 주시겠어요?",
   ],
   missing_fact: [
-    "자기소개서에는 {doc_라고} 되어 있는데, 그 숫자는 어떻게 나온 건가요?",
-    "답변에서 {doc} 이야기가 빠졌는데, 그 부분을 말씀해 주시겠어요?",
+    "'{quote}'라고 하셨는데, 자기소개서에 적은 {doc_와}는 어떻게 이어지나요?",
+    "'{quote}' 부분에서, 자기소개서의 {doc_는} 어떻게 나온 숫자인가요?",
   ],
-  no_result: ["그 결과를 숫자로 말씀해 주신다면 어느 정도였나요?", "그 일로 무엇이 얼마나 달라졌는지 수치로 말씀해 주시겠어요?"],
-  no_role: ["그 일에서 본인이 직접 맡은 부분은 무엇이었나요?", "팀이 아니라 본인이 직접 한 행동 하나만 말씀해 주시겠어요?"],
-  team_heavy: ["팀 전체 성과 중 본인이 기여한 비중은 어느 정도였나요?", "팀원들과 비교해 본인만 맡았던 일은 무엇인가요?"],
+  no_result: ["'{quote}'라고 하셨는데, 그 결과를 숫자로 말씀해 주시겠어요?", "'{quote}' 덕분에 무엇이 얼마나 달라졌나요?"],
+  no_role: ["'{quote}'라고 하셨는데, 그중 본인이 직접 한 일은 무엇이었나요?", "'{quote}' 부분에서 본인이 맡은 역할을 말씀해 주시겠어요?"],
+  team_heavy: ["'{quote}'라고 하셨는데, 그중 본인 기여는 어느 정도였나요?", "'{quote}' 부분에서 팀원들과 달리 본인만 맡은 일은 무엇인가요?"],
   vague: ["'{quote}'라고 하셨는데, 구체적으로 어떤 행동을 하셨나요?", "'{quote}'라는 말을 숫자나 행동으로 바꿔 말씀해 주시겠어요?"],
-  generic: ["방금 답변에서 가장 어려웠던 점과 그것을 어떻게 해결했는지 말씀해 주세요.", "그 경험을 다시 한다면 무엇을 다르게 하시겠어요?"],
+  generic: ["'{quote}'라고 하셨는데, 그때 가장 어려웠던 점은 무엇이었나요?", "'{quote}' 부분을 조금 더 구체적으로 말씀해 주시겠어요?"],
+  no_text: ["방금 답변이 잘 들리지 않았어요. 핵심만 한 문장으로 다시 말씀해 주시겠어요?"],
 };
 
 const norm = (s: string) => (s ?? "").replace(/\s+/g, " ").trim();
@@ -73,9 +78,27 @@ export function facts(text: string): Map<string, Set<string>> {
 
 const splitSentences = (t: string) => norm(t).split(/(?<=[.?!다요죠])\s+/).filter(Boolean);
 
-/** 답변의 빈 곳을 우선순위 순서로 모두 찾는다 (같은 답변이면 항상 같은 결과) */
+/** 답변 문장을 인용 길이로 자른다 (어절 단위) */
+export function shortQuote(sentence: string) {
+  const t = norm(sentence).replace(/[.?!]+$/, "");
+  if (t.length <= QUOTE_LEN) return t;
+  let out = "";
+  for (const w of t.split(" ")) {
+    if ((out + " " + w).trim().length > QUOTE_LEN) break;
+    out = (out + " " + w).trim();
+  }
+  return (out || t.slice(0, QUOTE_LEN)) + "…";
+}
+
+const RESULT_VERB = /(줄였|늘렸|높였|낮췄|개선|달성|성공|완성|만들었|해결)/;
+const longest = (ss: string[]) => ss.reduce((a, b) => (b.length > a.length ? b : a), "");
+
+/** 답변의 빈 곳을 우선순위 순서로 모두 찾는다. 모든 빈 곳에 '인용할 답변 문장'(quote)을 붙인다. */
 export function findIssues(main: Pick<Question, "type" | "evidence">, answer: string): Issue[] {
   const a = norm(answer);
+  if (!a) return [{ name: "no_text", slots: {} }];
+  const sents = splitSentences(a);
+  const q = (pred: (s: string) => boolean) => shortQuote(sents.find(pred) ?? longest(sents));
   const doc = facts(main.evidence), said = facts(a);
   const issues: Issue[] = [];
   const first = (s: Set<string>) => [...s].sort()[0];
@@ -83,28 +106,35 @@ export function findIssues(main: Pick<Question, "type" | "evidence">, answer: st
     const got = said.get(unit);
     if (got && ![...nums].some((n) => got.has(n))) issues.push({ name: "mismatch", slots: { doc: first(nums) + unit, said: first(got) + unit } });
   }
-  for (const [unit, nums] of doc) if (!said.has(unit)) issues.push({ name: "missing_fact", slots: { doc: first(nums) + unit } });
-  if (main.type === "경험" && a && !RESULT_WORDS.test(a)) issues.push({ name: "no_result", slots: {} });
+  if (main.type === "경험" && !RESULT_WORDS.test(a)) issues.push({ name: "no_result", slots: { quote: q((s) => RESULT_VERB.test(s)) } });
   const nSelf = (a.match(SELF) ?? []).length, nTeam = (a.match(TEAM) ?? []).length;
-  if (a && nSelf === 0) issues.push({ name: "no_role", slots: {} });
-  else if (nTeam >= 2 && nTeam >= 2 * nSelf) issues.push({ name: "team_heavy", slots: {} });
-  for (const s of splitSentences(a)) {
+  if (nSelf === 0) issues.push({ name: "no_role", slots: { quote: q(() => false) } });
+  else if (nTeam >= 2 && nTeam >= 2 * nSelf) issues.push({ name: "team_heavy", slots: { quote: q((s) => /(우리|저희|팀이|팀원들이|다 같이|함께)/.test(s)) } });
+  for (const s of sents) {
     const w = VAGUE.find((v) => s.includes(v));
     if (w) {
-      issues.push({ name: "vague", slots: { quote: s.length <= 25 ? s : w } });
+      issues.push({ name: "vague", slots: { quote: s.length <= QUOTE_LEN ? s.replace(/[.?!]+$/, "") : w } });
       break;
     }
   }
+  // 자소서 숫자를 답변에서 안 말한 것은 '답변 내용'이 아니라서 맨 뒤 (다른 빈 곳이 없을 때만)
+  for (const [unit, nums] of doc) if (!said.has(unit)) issues.push({ name: "missing_fact", slots: { doc: first(nums) + unit, quote: q(() => false) } });
   return issues;
+}
+
+/** 빈 곳이 없을 때: 답변에서 가장 긴 문장을 짚어 더 깊게 묻는다 */
+export function genericIssue(answer: string): Issue {
+  const sents = splitSentences(norm(answer));
+  return sents.length ? { name: "generic", slots: { quote: shortQuote(longest(sents)) } } : { name: "no_text", slots: {} };
 }
 
 const keyOf = (i: Issue) => i.name + JSON.stringify(i.slots);
 
-/** 숫자 사실 확인이 있으면 그중에서, 없으면 나머지 중에서 무작위. 전에 물은 것은 피한다. */
-export function chooseIssue(issues: Issue[], rand: () => number, askedKeys: Set<string> = new Set()): Issue {
-  if (!issues.length) return { name: "generic", slots: {} };
-  const factIssues = issues.filter((i) => i.name === "mismatch" || i.name === "missing_fact");
-  const pool = factIssues.length ? factIssues : issues;
+/** 우선순위: 숫자 불일치(답변이 자소서와 다름) → 답변 내용의 빈 곳(무작위) → 자소서 숫자 누락 → 일반. 전에 물은 것은 피한다. */
+export function chooseIssue(issues: Issue[], rand: () => number, askedKeys: Set<string> = new Set(), answer = ""): Issue {
+  if (!issues.length) return genericIssue(answer);
+  const tiers = [["mismatch", "no_text"], ["no_result", "no_role", "team_heavy", "vague"], ["missing_fact"]];
+  const pool = tiers.map((t) => issues.filter((i) => t.includes(i.name))).find((p) => p.length)!;
   const fresh = pool.filter((i) => !askedKeys.has(keyOf(i)));
   const from = fresh.length ? fresh : pool;
   return from[Math.floor(rand() * from.length)];
@@ -123,7 +153,7 @@ function finalOf(word: string) {
   }
   return "";
 }
-const JOSA: Record<string, [string, string]> = { 라고: ["이라고", "라고"], 로: ["으로", "로"] };
+const JOSA: Record<string, [string, string]> = { 라고: ["이라고", "라고"], 로: ["으로", "로"], 와: ["과", "와"], 는: ["은", "는"] };
 function withJosa(slots: Record<string, string>) {
   const out: Record<string, string> = { ...slots };
   for (const [k, v] of Object.entries(slots))
@@ -152,7 +182,7 @@ export function followupPrompt(main: Question, answer: string, issue: Issue, pre
 
 지시: ${INTENT[issue.name](issue.slots)}
 ${previous.length ? `이미 한 질문과 비슷하게 묻지 마라: ${previous.slice(-3).join(" / ")}\n` : ""}
-규칙: 존댓말 한 문장, 60자 이내. 답변과 자기소개서에 없는 숫자·사실을 지어내지 않는다.
+규칙: 지원자가 방금 한 말을 짧게 인용하거나 짚어서 묻는다. 존댓말 한 문장, 70자 이내. 답변과 자기소개서에 없는 숫자·사실을 지어내지 않는다.
 출력: {"question": "..."}`;
 }
 
@@ -163,6 +193,12 @@ export const FOLLOWUP_SCHEMA = JSON.stringify({
 });
 
 /** AI 답 검사. 통과하면 질문, 아니면 오류 */
+const STOP = new Set(["그리", "그래", "그때", "그것", "제가", "저는", "저희", "우리", "있었", "했습", "했고", "하는", "하고", "있습", "합니", "그런", "이런", "정말"]);
+export function sharesWord(q: string, quote: string) {
+  const words = quote.replace(/…/g, "").split(/[\s,.!?'"()]+/).filter((w) => w.length >= 2).map((w) => w.slice(0, 2)).filter((w) => !STOP.has(w));
+  return words.some((w) => q.includes(w));
+}
+
 export function checkAiFollowup(raw: string, issue: Issue, main: Question, answer: string): string {
   let q = "";
   try {
@@ -181,6 +217,8 @@ export function checkAiFollowup(raw: string, issue: Issue, main: Question, answe
     const num = issue.slots.doc.match(/\d+/)?.[0];
     if (num && !q.includes(num)) throw new Error("확인해야 할 숫자를 빠뜨림");
   }
+  // 답변을 짚었는지: 인용 문장의 낱말(앞 2글자)이 질문에 하나라도 있어야 함
+  if (issue.slots.quote && issue.name !== "missing_fact" && !sharesWord(q, issue.slots.quote)) throw new Error("답변 내용을 짚지 않음");
   return q;
 }
 
@@ -205,7 +243,7 @@ export async function makeFollowup(main: Question, answer: string, deps: Followu
   const rand = deps.rand ?? Math.random;
   const history = deps.history ?? [];
   const issues = findIssues(main, answer);
-  const issue = chooseIssue(issues, rand);
+  const issue = chooseIssue(issues, rand, new Set(), answer);
   const fallback = templateQuestion(issue, rand, new Set(history));
   const out: Followup = { question: fallback, reason: issue.name, issues: issues.map((i) => i.name), source: "rule", error: "", ms: 0 };
   if (!deps.ask) out.error = "이 PC에서 AI를 쓸 수 없어 정해진 문장을 썼어요";

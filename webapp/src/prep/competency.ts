@@ -5,6 +5,8 @@ export interface Competency {
   id: string;
   name: string; // 화면에 보일 이름
   words: string[];
+  cues?: RegExp[]; // 문맥 규칙: 단어가 없어도 "무엇을 해서 어떻게 되었다"는 서술로 역량을 잡는다 (자소서용)
+  desc?: string; // 뜻 비교용 정의 (NCS 직업기초능력 정의를 쉬운 말로)
 }
 
 export const COMPETENCIES: Competency[] = [
@@ -20,11 +22,96 @@ export const COMPETENCIES: Competency[] = [
   { id: "ethics", name: "직업윤리·책임감", words: ["책임감", "책임", "성실", "윤리", "정직", "신뢰", "약속", "꼼꼼", "주인의식", "근면", "규정 준수", "준법", "맡았", "담당", "끝까지"] },
 ];
 
+
+// ── 뜻 비교용 예시 문장 ──
+// NCS 직업기초능력 하위능력 정의를 "자소서에 쓸 법한 행동 문장"으로 옮긴 것. 자소서 문장과 뜻이 가까우면 그 역량 근거로 본다. [설계 판단]
+export const PROTOTYPES: Record<string, string[]> = {
+  communication: ["상대가 이해하기 쉽게 내용을 정리해 설명하고 발표했다", "상대의 말을 끝까지 듣고 필요한 것을 되물어 확인했다", "문서와 보고로 진행 상황을 정확히 전달했다"],
+  math: ["데이터를 모아 숫자로 비교하고 분석했다", "수치로 결과를 확인했더니 이전보다 몇 퍼센트 좋아졌다", "통계와 표를 이용해 원인을 숫자로 보여 주었다"],
+  problem: ["문제가 생긴 원인을 찾아내 해결했다", "기존 방식의 문제점을 발견하고 더 나은 방법으로 바꿨다", "여러 대안을 비교해 가장 효과적인 해결책을 실행했다"],
+  self: ["부족한 점을 채우려고 스스로 공부해 새로운 기술을 익혔다", "실패에서 배운 점을 다음 시도에 반영하며 성장했다", "이 경험을 통해 중요한 것을 깨닫게 되었다"],
+  resource: ["정해진 예산과 시간 안에서 우선순위를 정해 일을 나눴다", "일정을 관리해 마감에 맞춰 일을 끝냈다", "비용을 줄이고 자원을 효율적으로 썼다"],
+  interpersonal: ["팀원들과 역할을 나누고 의견을 조율하며 함께 일했다", "의견이 부딪힌 동료를 설득하고 갈등을 풀었다", "다른 사람을 도와주며 좋은 관계를 만들었다"],
+  information: ["필요한 자료를 조사하고 사례를 모아 정리했다", "사용자를 인터뷰하고 설문해서 요구를 파악했다", "여러 정보를 비교해 쓸모 있는 것을 골라 활용했다"],
+  technology: ["프로그램과 장비를 다루는 전문 기술로 결과물을 만들었다", "새로운 도구와 기술을 업무에 적용했다", "관련 자격증을 취득해 전문성을 갖췄다"],
+  organization: ["고객과 사용자가 실제로 원하는 것을 파악해 서비스에 반영했다", "회사와 조직이 어떻게 돌아가는지 이해하고 업무 절차에 맞게 일했다", "시장과 업계 흐름을 보고 일의 방향을 정했다"],
+  ethics: ["맡은 일을 책임감 있게 끝까지 해냈다", "정해진 절차와 규칙을 지켜 정직하게 처리했다", "약속한 기한을 지키고 꼼꼼하게 확인했다"],
+};
+
+// ── 문맥 규칙 ──
+// 단어 사전은 "협업"처럼 이름을 직접 쓴 경우만 잡는다. 자소서는 대개 행동과 결과로 쓰므로
+// "누구와 함께 ~했다", "원인을 찾아 ~했다", "~에서 ~로 줄었다", "~을 배웠다/하게 되었다" 같은 서술을 규칙으로 잡는다.
+// NCS 하위능력(예: 문제해결 = 문제 인식·원인 분석·대안 실행)을 행동 문장으로 옮긴 것. [설계 판단, 데이터로 맞춘 값 아님]
+const N = String.raw`\d[\d,.]*`;
+const CHANGE = String.raw`(줄|낮|늘|높|올|단축|감소|증가|개선|향상)`;
+// S = 그 하나로 역량을 보여 주는 강한 서술 (2점), W = 약한 서술 (1점). 한 자소서에서 2점이 되면 그 역량으로 본다.
+export interface Cue { re: RegExp; w: 1 | 2 }
+const S = (re: RegExp): Cue => ({ re, w: 2 });
+const W = (re: RegExp): Cue => ({ re, w: 1 });
+export const CUE_PASS = 2;
+export const CUES: Record<string, Cue[]> = {
+  communication: [
+    S(/(발표|보고|설명|안내|인계|공유|전달)(했|하였|드렸|드리|하며|하면서|하고|해\s)/),
+    W(/(쉬운|쉽게|알기 쉽|생활 속 예|예를 들어).{0,15}(말|설명|바꾸|바꿔)/),
+    W(/(질문 목록|먼저 묻|물어보|되물|의견을 듣|이야기를 듣)/),
+    S(/(정리해|정리하여|정리한).{0,15}(공유|전달|발표|인계|보고|안내|붙)/),
+    W(/(회의|미팅)를? .{0,8}(열|진행|주재)/),
+  ],
+  math: [
+    S(new RegExp(`${N}\\s?(건|명|원|초|분|점|%|개|회)?에서 ${N}\\s?(건|명|원|초|분|점|%|개|회)?(으로|로)`)),
+    S(new RegExp(`${N}\\s?%.{0,12}${CHANGE}`)),
+    W(/(데이터|기록|수치|숫자|통계).{0,12}(모아|모으|수집|분석|비교|기록|확인)/),
+    W(/(평균|비율|절반|배 높|배로)/),
+  ],
+  problem: [
+    S(/원인(을|이|은)?.{0,20}(찾|확인|파악|분석|밝혀|알아)/),
+    S(/(문제|오류|불량|지연|불만|실수|장애)(가|이|를|을)?.{0,30}(해결|고쳤|고치|막|줄|개선|바꿨|바꾸|대안)/),
+    W(new RegExp(`${CHANGE}(였|었|췄|아졌|어졌|었다|었습|였습|됐|되었)`)),
+    S(/(대안|해결책|개선안|방법을).{0,10}(찾|제안|만들|마련|내)/),
+    W(/(제안했|제안하|바꿨더니|바꾸었더니|바꾸자)/),
+  ],
+  self: [
+    S(/(배웠|배우게|배울 수|깨달|익혔|익히게|알게 되었|하게 되었|느끼게 되었|성장했|성장할)/),
+    S(/(독학|스스로 공부|따로 공부|공부했|공부하며|강의를 들|자격증.{0,8}(준비|공부|취득|땄))/),
+    W(/(처음 해 보|처음이라|처음 맡|실패|시행착오).{0,40}(다음|다시|계속|기록|시도|바꿔)/),
+  ],
+  resource: [
+    S(/(예산|비용|광고비|경비|재고|인력|자재)/),
+    W(new RegExp(`${N}\\s?만\\s?원`)),
+    S(/(일정|기한|마감|시간표|우선순위)(을|를|이|에)?.{0,12}(맞추|맞춰|관리|조정|지키|짜|정하|나누|나눠)/),
+    W(/(시간|업무|역할)(을|를)? .{0,6}(나누|나눠|배분|분담)/),
+  ],
+  interpersonal: [
+    W(/(팀원|동료|선배|후배|조원|개발자|디자이너|담당자|구성원|반장|친구들).{0,20}(함께|같이|와 |과 |들과|에게 도움|사이에서)/),
+    W(/(함께|같이).{0,20}(찾|정|만들|보며|준비|해결|의논|논의|맞추)/),
+    S(/(코드 리뷰|역할을 나누|역할 분담|의견을 모|의견 차이|입장 차이|사이에서|중재|조율)/),
+  ],
+  information: [
+    S(/(조사|인터뷰|설문|리서치|벤치마킹|찾아보|검색|자료를 모|사례를 모|사례를 찾|뉴스를|논문)/),
+    W(new RegExp(`${N}\\s?(곳|개 업체|개사|분|명)(을|를|의)?.{0,15}(조사|비교|분석|인터뷰|살펴)`)),
+  ],
+  technology: [
+    W(/(API|데이터베이스|DB|앱|웹|서버|프론트엔드|백엔드|설비|장비|회로|CAD|프로그램|툴|화면 설계|품질|공정)/),
+    S(/(자격증|기사|산업기사|자격)(을|를)? .{0,6}(취득|땄|준비|보유)/),
+  ],
+  organization: [
+    W(/(고객|손님|민원인|이용자|사용자|환자|보호자|어르신|소비자|거래처)/),
+    W(/(매출|판매액|수익|시장|업계|회사의|조직의|부서)/),
+  ],
+  ethics: [
+    S(/(약속|기한|마감)(을|를)?.{0,20}(지키|지켰|지키지 못할|어기지)/),
+    W(/(절차|규정|원칙|양식|매뉴얼)(을|를|대로|에 따라|에 맞게).{0,15}(지키|지켰|처리|따르|따랐|빼지|정리)?/),
+    W(/(끝까지|한 번도|한 단계도|반드시|빠짐없이|꼼꼼|정확하게|직접 확인|확인받)/),
+    W(/(개인정보|보안|안전 수칙|정직|투명)/),
+  ],
+};
+
 export interface Hit {
   id: string;
   name: string;
-  words: string[]; // 찾은 근거 단어
-  sentences: string[]; // 그 단어가 들어 있는 문장 (최대 2개)
+  words: string[]; // 찾은 근거 (단어, 또는 문맥 규칙에 걸린 구절)
+  sentences: string[]; // 근거 문장 (최대 2개)
+  via: ("단어" | "문맥" | "뜻")[]; // 무엇으로 찾았나
 }
 
 export function sentences(text: string): string[] {
@@ -34,29 +121,70 @@ export function sentences(text: string): string[] {
     .filter((s) => s.length > 1);
 }
 
-export function findCompetencies(text: string): Hit[] {
+/** 문장에서 이 역량의 문맥 규칙에 걸린 구절들 */
+export function cueMatches(id: string, sentence: string): { text: string; i: number; w: number }[] {
+  return (CUES[id] ?? []).flatMap((c, i) => {
+    const m = sentence.match(c.re)?.[0];
+    return m ? [{ text: m, i, w: c.w }] : [];
+  });
+}
+
+/** 글 전체에서 서로 다른 문맥 규칙의 점수 합 (같은 규칙은 여러 번 걸려도 한 번) */
+export function cueScore(id: string, sents: string[]) {
+  const best = new Map<number, number>();
+  for (const s of sents) for (const m of cueMatches(id, s)) best.set(m.i, m.w);
+  return [...best.values()].reduce((a, b) => a + b, 0);
+}
+
+/** 역량 찾기. 자소서는 문맥 규칙까지(cues=true), 채용공고는 단어만 (공고 문장은 "~할 수 있는 분" 꼴이라 행동 규칙이 안 맞음) */
+export function findCompetencies(text: string, cues = false): Hit[] {
   const sents = sentences(text);
   const lower = text.toLowerCase();
   const hits: Hit[] = [];
   for (const c of COMPETENCIES) {
     const words = c.words.filter((w) => lower.includes(w.toLowerCase()));
-    if (!words.length) continue;
-    const ev = sents.filter((s) => words.some((w) => s.toLowerCase().includes(w.toLowerCase()))).slice(0, 2);
-    hits.push({ id: c.id, name: c.name, words, sentences: ev });
+    const ev = sents.filter((s) => words.some((w) => s.toLowerCase().includes(w.toLowerCase())));
+    const ctx = cues && cueScore(c.id, sents) >= CUE_PASS ? sents.map((s) => ({ s, m: cueMatches(c.id, s).map((x) => x.text) })).filter((x) => x.m.length) : [];
+    if (!words.length && !ctx.length) continue;
+    const via: Hit["via"] = [];
+    if (words.length) via.push("단어");
+    if (ctx.length) via.push("문맥");
+    hits.push({
+      id: c.id,
+      name: c.name,
+      words: [...words, ...ctx.flatMap((x) => x.m.map((m) => `“${m}”`))].filter((w, i, a) => a.indexOf(w) === i),
+      sentences: [...new Set([...ev, ...ctx.map((x) => x.s)])].slice(0, 2),
+      via,
+    });
   }
-  // 근거 단어가 많은 역량부터
+  // 근거가 많은 역량부터
   return hits.sort((a, b) => b.words.length - a.words.length);
 }
 
 export interface Required {
+  id?: string; // 역량 10개 중 어느 것인지 (규칙 정리면 있음, Gemini 정리면 단어로 추정)
   name: string; // 필요역량 이름
   reason: string; // 공고의 근거 문장
   words: string[]; // 자소서에서 찾을 단어
 }
 
 export interface Coverage extends Required {
-  found: string[]; // 자소서에서 찾은 단어
+  found: string[]; // 자소서에서 찾은 근거 (단어, 문맥 구절, 또는 뜻 점수)
   evidence: string; // 자소서 근거 문장
+  via?: "단어" | "문맥" | "뜻";
+}
+
+/** Gemini가 지은 필요역량 이름·단어가 역량 10개 중 어느 것에 가장 가까운지 (겹치는 단어 수). 못 정하면 undefined */
+export function guessCompetency(r: Required): string | undefined {
+  if (r.id) return r.id;
+  const ws = [r.name, ...r.words].map((w) => w.toLowerCase()).filter(Boolean);
+  let best: string | undefined, bestN = 0;
+  for (const c of COMPETENCIES) {
+    const cw = [c.name, ...c.words].map((w) => w.toLowerCase());
+    const n = ws.filter((w) => cw.some((x) => x.includes(w) || w.includes(x))).length;
+    if (n > bestN) [best, bestN] = [c.id, n];
+  }
+  return best;
 }
 
 /** 필요역량마다 자소서에 관련 단어가 있는지 */
@@ -66,7 +194,14 @@ export function checkResume(required: Required[], resume: string): Coverage[] {
   return required.map((r) => {
     const found = r.words.filter((w) => w && lower.includes(w.toLowerCase()));
     const evidence = sents.find((s) => found.some((w) => s.toLowerCase().includes(w.toLowerCase()))) ?? "";
-    return { ...r, found, evidence };
+    if (found.length) return { ...r, found, evidence, via: "단어" as const };
+    // 단어가 없으면 문맥 규칙 (예: "원인을 찾아 ~해결했다" → 문제해결)
+    const id = guessCompetency(r);
+    if (id && cueScore(id, sents) >= CUE_PASS) {
+      const ev = sents.map((s) => ({ s, m: cueMatches(id, s) })).filter((x) => x.m.length).sort((a, b) => b.m.reduce((t, m) => t + m.w, 0) - a.m.reduce((t, m) => t + m.w, 0));
+      return { ...r, id, found: ev.flatMap((x) => x.m.map((m) => `“${m.text}”`)).slice(0, 3), evidence: ev[0].s, via: "문맥" as const };
+    }
+    return { ...r, id, found, evidence };
   });
 }
 
@@ -75,6 +210,7 @@ export function requiredFromRules(posting: string, max = 5): Required[] {
   return findCompetencies(posting)
     .slice(0, max)
     .map((h) => ({
+      id: h.id,
       name: h.name,
       reason: h.sentences[0] ?? h.words.join(", "),
       words: COMPETENCIES.find((c) => c.id === h.id)!.words,

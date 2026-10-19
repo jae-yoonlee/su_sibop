@@ -182,7 +182,7 @@ export function followupPrompt(main: Question, answer: string, issue: Issue, pre
 
 지시: ${INTENT[issue.name](issue.slots)}
 ${previous.length ? `이미 한 질문과 비슷하게 묻지 마라: ${previous.slice(-3).join(" / ")}\n` : ""}
-규칙: 지원자가 방금 한 말을 짧게 인용하거나 짚어서 묻는다. '~나요?'·'~습니까?'로 끝나는 존댓말 물음 한 문장, 70자 이내(반말 금지). 상대를 '지원자'라고 부르지 말고 '본인'이라고 한다. 답변과 자기소개서에 없는 숫자·사실·낱말을 지어내지 않는다.
+규칙: 지원자가 방금 한 말을 짧게 인용하거나 짚어서 묻는다. 존댓말 한 문장, 70자 이내. 답변과 자기소개서에 없는 숫자·사실을 지어내지 않는다.
 출력: {"question": "..."}`;
 }
 

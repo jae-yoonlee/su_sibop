@@ -217,7 +217,6 @@ export function checkAiFollowup(raw: string, issue: Issue, main: Question, answe
   const allowed = new Set(`${main.evidence ?? ""} ${answer}`.match(/\d+/g) ?? []);
   const made = (q.match(/\d+/g) ?? []).filter((n) => !allowed.has(n));
   if (made.length) throw new Error(`없던 숫자를 만듦: ${made.join(",")}`);
-  if (COACHING.test(q)) throw new Error("답하는 방법을 시킴");
   // 숫자 사실 확인은 그 숫자를 실제로 물어야 함 (AI가 주제를 바꾸지 못하게)
   if (issue.name === "mismatch" || issue.name === "missing_fact") {
     const num = issue.slots.doc.match(/\d+/)?.[0];

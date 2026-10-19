@@ -10,6 +10,7 @@ export const ALERT_LABELS: Record<string, string> = {
   down: "고개를 들어 주세요",
   center: "화면 가운데로 와 주세요",
   shift: "처음 앉은 자리로 돌아와 주세요",
+  look: "카메라나 질문을 봐 주세요",
   gaze: "시선을 한곳에 두세요",
   stuck: "말을 이어 가 보세요",
   quiet: "조금 더 크게 말해 주세요",

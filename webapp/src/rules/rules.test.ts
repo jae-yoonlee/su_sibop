@@ -122,6 +122,44 @@ describe("자세 규칙", () => {
     expect(a).not.toContain("gaze");
     expect(b).toContain("gaze");
   });
+
+  describe("카메라·질문 말고 딴 곳 보기", () => {
+    // 렌즈는 정면보다 10° 위, 질문 카드는 정면. 눈동자도 각각 기록
+    const targets = [{ yaw: 0, pitch: -10, gx: 0, gy: 0.1 }, { yaw: 0, pitch: 0, gx: 0, gy: 0 }];
+    const look = (angles: { yaw: number; pitch: number }, f: FaceInfo, sec = 2.2) => {
+      const r = new PostureRules({ ...base, targets });
+      let out: string[] = [];
+      run(0, sec, 0.05, (t) => (out = r.update(t, angles, f, CENTER)));
+      return out;
+    };
+
+    it("렌즈와 질문 사이를 보면 괜찮음", () => {
+      expect(look({ yaw: 0, pitch: -5 }, info({ gazeY: 0.05 }))).not.toContain("look");
+      expect(look({ yaw: 8, pitch: 0 }, info())).not.toContain("look");
+    });
+
+    it("고개는 정면인데 눈만 옆을 2초 넘게 보면 look", () => {
+      expect(look({ yaw: 0, pitch: 0 }, info({ gazeX: 0.5 }))).toContain("look");
+      expect(look({ yaw: 0, pitch: 0 }, info({ gazeX: 0.5 }), 1.8)).not.toContain("look");
+    });
+
+    it("고개를 15° 옆으로(돌림 경고 20° 전) 2초 넘게 돌리면 look", () => {
+      expect(look({ yaw: 15, pitch: 0 }, info())).toContain("look");
+    });
+
+    it("20° 넘게 돌리면 돌림 경고만 (겹치지 않게)", () => {
+      const out = look({ yaw: 25, pitch: 0 }, info());
+      expect(out).toContain("turn");
+      expect(out).not.toContain("look");
+    });
+
+    it("눈 감은 순간은 판정을 끊지 않음", () => {
+      const r = new PostureRules({ ...base, targets });
+      let out: string[] = [];
+      run(0, 2.2, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info({ gazeX: 0.5, blink: t > 1 && t < 1.2 ? 0.9 : 0 }), CENTER)));
+      expect(out).toContain("look");
+    });
+  });
 });
 
 describe("음성", () => {
@@ -285,9 +323,9 @@ describe("알림 간격", () => {
   it("한 번 띄우면 20초 동안 다른 경고는 기다리다 기록만", () => {
     const g = new FeedbackGate();
     expect(g.update(0, ["turn"])).toEqual(["turn"]);
-    expect(g.update(3, ["turn", "quiet"])).toEqual([]);
-    g.update(12, ["turn", "quiet"]);
-    expect(g.log.find((l) => l.name === "quiet")!.reason).toBe("EXPIRED");
+    expect(g.update(3, ["turn", "noise"])).toEqual([]);
+    g.update(12, ["turn", "noise"]);
+    expect(g.log.find((l) => l.name === "noise")!.reason).toBe("EXPIRED");
   });
 
   it("같은 종류는 45초 안에 다시 안 띄움", () => {
@@ -302,6 +340,25 @@ describe("알림 간격", () => {
     const g = new FeedbackGate();
     g.update(0, ["turn"]);
     expect(g.update(1, ["stuck"])).toContain("stuck");
+  });
+
+  it("작은 목소리는 다른 경고와 같이, 이어지는 동안 계속", () => {
+    const g = new FeedbackGate();
+    g.update(0, ["turn"]);
+    expect(g.update(1, ["turn", "quiet"]).sort()).toEqual(["quiet", "turn"]);
+    expect(g.update(10, ["quiet"])).toEqual(["quiet"]);
+    expect(g.log.filter((l) => l.name === "quiet" && l.outcome === "shown")).toHaveLength(1);
+  });
+
+  it("시선 경고는 간격 규칙과 따로 뜨고, 한 번 띄우면 5초 쉬고 다시 확인", () => {
+    const g = new FeedbackGate();
+    g.update(0, ["turn"]);
+    expect(g.update(1, ["look"])).toContain("look"); // 20초 간격에 안 막힘
+    expect(g.update(3, ["look"])).toContain("look"); // 카드 2.5초
+    expect(g.update(4, ["look"])).not.toContain("look"); // 쉬는 중
+    expect(g.update(8.4, ["look"])).not.toContain("look");
+    expect(g.update(8.6, ["gaze"])).toContain("gaze"); // 끝나고 5초 뒤 다시 확인
+    expect(g.log.filter((l) => l.reason === "EYE")).toHaveLength(2);
   });
 
   it("답변 통계에 띄운 것·못 띄운 것 모두 집계", () => {

@@ -552,7 +552,7 @@ function go(phase: Phase) {
   S.phase = phase;
   S.phaseAt = now();
   if (phase === "answer") {
-    const base = { box: S.cam.baseBox!, gazeStd: S.cam.baseGazeStd };
+    const base = { box: S.cam.baseBox!, gazeStd: S.cam.baseGazeStd, targets: S.cam.lookTargets() };
     const v = S.voice;
     S.coach = new AnswerCoach(base, { noiseRms: v.noiseRms!, noiseDb: v.noiseDb!, voiceDb: v.voiceDb! }, S.phaseAt, curQ());
     startStt();

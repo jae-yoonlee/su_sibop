@@ -1,0 +1,2 @@
+silero_vad_v5.onnx — Silero VAD v5 (https://github.com/snakers4/silero-vad), MIT License.
+Copyright (c) 2020-present Silero Team. 파일은 npm @ricky0123/vad-web@0.0.24(ISC) 배포본에서 가져왔다.

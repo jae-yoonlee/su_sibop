@@ -4,6 +4,7 @@ import {
   GAZE_BLINK_SKIP, LENS_MAX_YAW, POSITION_OK_SEC, SCREEN_GAP_WARN, SETTLE_SEC, STEADY_MAX_STD, STEADY_SEC,
 } from "./constants";
 import type { FaceBox, FaceInfo } from "./face";
+import type { LookTarget } from "./postureRules";
 import { mean, std } from "./stats";
 
 export type SetupStep = "position" | "lens" | "screen" | "done";
@@ -48,7 +49,7 @@ export class SteadyWindow {
     this.samples = [];
   }
 
-  feed(t: number, info: FaceInfo): (Angles & { gazeStd: number }) | null {
+  feed(t: number, info: FaceInfo): (Angles & { gazeStd: number; gx: number; gy: number }) | null {
     this.samples.push({ t, v: { yaw: info.yaw, pitch: info.pitch, roll: info.roll }, gx: info.gazeX, gy: info.gazeY, blink: info.blink });
     this.samples = this.samples.filter((s) => t - s.t <= STEADY_SEC);
     if (t - this.samples[0].t < STEADY_SEC - 0.05) return null;
@@ -60,6 +61,8 @@ export class SteadyWindow {
       pitch: mean(this.samples.map((s) => s.v.pitch)),
       roll: mean(this.samples.map((s) => s.v.roll)),
       gazeStd,
+      gx: open.length ? mean(open.map((s) => s.gx)) : 0,
+      gy: open.length ? mean(open.map((s) => s.gy)) : 0,
     };
   }
 }
@@ -67,8 +70,8 @@ export class SteadyWindow {
 export class CameraSetup {
   step: SetupStep = "position";
   message: SetupMessage = "no_face";
-  lens: Angles | null = null;
-  baseline: Angles | null = null; // 질문 화면을 볼 때 각도 → 정면(0°)
+  lens: (Angles & { gx: number; gy: number }) | null = null;
+  baseline: (Angles & { gx: number; gy: number }) | null = null; // 질문 화면을 볼 때 각도 → 정면(0°)
   baseBox: FaceBox | null = null; // 그때의 얼굴 위치 (자리 이동 판정 기준)
   baseGazeStd = 0; // 그때의 눈동자 흔들림
   warnings: SetupMessage[] = [];
@@ -136,6 +139,15 @@ export class CameraSetup {
     else if (lens.pitch < CAMERA_HIGH_PITCH) out.push("camera_high");
     if (Math.abs(base.pitch - lens.pitch) > SCREEN_GAP_WARN) out.push("screen_gap");
     return out;
+  }
+
+  /** 봐도 되는 곳 두 점(렌즈, 질문 카드). 각도는 정면 기준으로 보정한 값 */
+  lookTargets(): LookTarget[] {
+    const b = this.baseline!, l = this.lens!;
+    return [
+      { yaw: l.yaw - b.yaw, pitch: l.pitch - b.pitch, gx: l.gx, gy: l.gy },
+      { yaw: 0, pitch: 0, gx: b.gx, gy: b.gy },
+    ];
   }
 
   /** 보정된 각도 = 현재 각도 − 정면 기준 */

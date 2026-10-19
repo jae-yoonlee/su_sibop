@@ -22,8 +22,10 @@ export const FACE_GAP_SEC = 0.5; // 얼굴 인식이 이보다 짧게 끊기면 
 export const MIN_SHOW_SEC = 1.0; // 상태가 풀려도 경고를 이 시간만큼 유지 (깜빡거림 방지)
 
 // ── 자리 이동 [coach_engine.py]
-export const SHIFT_TOL = 0.12; // 세팅 때 위치에서 가로로 이만큼(화면 폭 비율) 벗어나면 이동
-export const SHIFT_SIZE_RATIO = 0.25; // [가설] 얼굴 폭이 세팅 때보다 25% 넘게 변하면 앞뒤 이동
+// 2026-10-19 실사용 피드백 "움직임을 잘 못 잡음" → 가로 12% → 8%, 위아래 추가, 앞뒤 25% → 15% [가설, 녹화로 확인 필요]
+export const SHIFT_TOL = 0.08; // 세팅 때 위치에서 가로로 이만큼(화면 폭 비율) 벗어나면 이동 (Python 0.12)
+export const SHIFT_Y_TOL = 0.08; // [가설] 위아래로 이만큼(화면 높이 비율) 벗어나면 이동 (예전엔 안 봄)
+export const SHIFT_SIZE_RATIO = 0.15; // [가설] 얼굴 폭이 세팅 때보다 15% 넘게 변하면 앞뒤 이동
 
 // ── 눈동자 [가설] step2_face_landmarks.py의 gaze_x/gaze_y 계산식만 재사용, 기준값은 데이터 없음
 export const GAZE_WINDOW_SEC = 4.0; // 최근 이 시간의 눈동자 흔들림을 봄
@@ -37,10 +39,12 @@ export const ON_RATIO = 3.0; // 소음 RMS의 이 배수를 넘으면 말함
 export const OFF_RATIO = 2.0;
 export const MIN_ON_SEC = 0.15;
 export const OFF_HOLD_SEC = 0.3;
+// [가설, 2026-10-19 실사용 피드백] 숨소리·입소리·의자·키보드처럼 작고 짧은 소리가 '말함'으로 잡혀 침묵 타이머가 계속 초기화됐다.
+export const SPEECH_FLOOR_BELOW_VOICE_DB = 20; // 내 목소리 기준보다 이만큼 넘게 작은 소리는 말로 보지 않음 (작은 목소리 경고 6dB보다 훨씬 아래)
+export const SILENCE_RESET_SEC = 0.3; // 침묵을 끊으려면 이만큼 이어서 말해야 함 (짧은 '음'·기침 한 번은 침묵 유지)
 
 // ── 음성 규칙 [voice_rules.py]
 export const STUCK_SEC = 5.0; // 이만큼 말이 없으면 침묵 경고 (Python 4초 → 사용자 요청 5초)
-export const STUCK_COOLDOWN = 30.0;
 export const QUIET_WINDOW = 10.0;
 export const QUIET_MIN_SPEECH = 3.0;
 export const QUIET_ON_DB = 6.0; // 내 기준보다 이만큼 작으면 켬

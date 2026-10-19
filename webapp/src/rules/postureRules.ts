@@ -1,7 +1,7 @@
 // 자세 규칙: 얼굴 안 보임·고개 돌림·숙임(step3_coaching.CoachRules), 자리 이동(coach_engine), 중앙 이탈·눈동자(웹에서 추가).
 import {
   CENTER_X_TOL, CENTER_Y_RANGE, FACE_GAP_SEC, GAZE_BASE_RATIO, GAZE_BLINK_SKIP, GAZE_MIN_STD, GAZE_WINDOW_SEC,
-  HOLD_SEC, MIN_SHOW_SEC, PITCH_LIMIT, SHIFT_SIZE_RATIO, SHIFT_TOL, YAW_LIMIT,
+  HOLD_SEC, MIN_SHOW_SEC, PITCH_LIMIT, SHIFT_SIZE_RATIO, SHIFT_TOL, SHIFT_Y_TOL, YAW_LIMIT,
 } from "./constants";
 import { EventTracker } from "./events";
 import type { FaceBox, FaceInfo } from "./face";
@@ -20,7 +20,7 @@ export function offCenter(box: FaceBox) {
 }
 
 export function shifted(box: FaceBox, base: FaceBox) {
-  return Math.abs(box.cx - base.cx) > SHIFT_TOL || Math.abs(box.w / base.w - 1) > SHIFT_SIZE_RATIO;
+  return Math.abs(box.cx - base.cx) > SHIFT_TOL || Math.abs(box.cy - base.cy) > SHIFT_Y_TOL || Math.abs(box.w / base.w - 1) > SHIFT_SIZE_RATIO;
 }
 
 export class PostureRules {

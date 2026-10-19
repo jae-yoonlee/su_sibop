@@ -44,8 +44,13 @@ export function offCenter(box: FaceBox) {
   return Math.abs(box.cx - 0.5) > CENTER_X_TOL || box.cy < CENTER_Y_RANGE[0] || box.cy > CENTER_Y_RANGE[1];
 }
 
-export function shifted(box: FaceBox, base: FaceBox) {
-  return Math.abs(box.cx - base.cx) > SHIFT_TOL || Math.abs(box.cy - base.cy) > SHIFT_Y_TOL || Math.abs(box.w / base.w - 1) > SHIFT_SIZE_RATIO;
+/** 세팅 때 자리에서 벗어난 축들 (가로 x, 세로 y, 앞뒤 size). 비어 있으면 제자리 */
+export function shiftAxes(box: FaceBox, base: FaceBox): ("x" | "y" | "size")[] {
+  const out: ("x" | "y" | "size")[] = [];
+  if (Math.abs(box.cx - base.cx) > SHIFT_TOL) out.push("x");
+  if (Math.abs(box.cy - base.cy) > SHIFT_Y_TOL) out.push("y");
+  if (Math.abs(box.w / base.w - 1) > SHIFT_SIZE_RATIO) out.push("size");
+  return out;
 }
 
 export class PostureRules {
@@ -56,6 +61,9 @@ export class PostureRules {
   private lastOn = new Map<string, number>();
   private gaze: { t: number; x: number; y: number }[] = [];
   private lookAway = false;
+  private lastT: number | null = null;
+  /** 자리 이동으로 본 시간(초)을 축별로. 오경보가 어느 축 때문인지 검증용 */
+  shiftBy = { x: 0, y: 0, size: 0 };
 
   constructor(private base: PostureBase) {}
 
@@ -96,7 +104,11 @@ export class PostureRules {
     const away = this.hold("away", !face, t);
     const gap = !face && away < FACE_GAP_SEC;
     const isCenter = face && offCenter(box!);
-    const isShift = face && !isCenter && shifted(box!, this.base.box);
+    const axes = face && !isCenter ? shiftAxes(box!, this.base.box) : [];
+    const isShift = axes.length > 0;
+    const dt = this.lastT === null ? 0 : Math.min(0.5, t - this.lastT);
+    this.lastT = t;
+    for (const a of axes) this.shiftBy[a] += dt;
     // 몸이 옆으로 가면 고개를 안 돌려도 yaw가 돌아간 것처럼 나와서, 이동 중엔 돌림으로 세지 않음 (coach_engine과 같음)
     const yawOk = isCenter || isShift;
     this.held = {

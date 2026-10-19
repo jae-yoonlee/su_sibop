@@ -101,8 +101,16 @@ describe("자세 규칙", () => {
   it("위아래로 움직여도 shift", () => {
     const r = new PostureRules(base);
     let out: string[] = [];
-    run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, cy: CENTER.cy + 0.1 })));
+    run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, cy: CENTER.cy + 0.15 })));
     expect(out).toContain("shift");
+    expect(r.shiftBy.y).toBeGreaterThan(2);
+  });
+
+  it("글 읽듯 조금 끄덕이거나 기울면 shift 아님 (여진 검증 오경보)", () => {
+    const r = new PostureRules(base);
+    let out: string[] = [];
+    run(0, 3, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, cy: CENTER.cy + 0.1, w: CENTER.w * 1.17 })));
+    expect(out).not.toContain("shift");
   });
 
   it("앞뒤로 크게 움직이면 shift", () => {

@@ -69,6 +69,7 @@ export function normalizeSpoken(text: string): string {
     .replace(/(\d+)\s?해/g, "$1년")
     .replace(/반년/g, "6개월")
     .replace(/(\d+)\s?(퍼센트|프로)/g, "$1%")
+    .replace(new RegExp(`(\\d)\\s?퍼${AFTER}`, "g"), "$1%") // 받아쓰기가 "2.1퍼"로 줄여 적음 (2026-10-19 여진 검증)
     .replace(/(\d+)\s+(개월|명|배|건|개|원|시간|분|주|일|년|%)/g, "$1$2");
   return norm(t);
 }
@@ -152,15 +153,22 @@ export interface CheckDeps {
 export const RECHECK_SCHEMA = JSON.stringify({ type: "object", properties: { same: { type: "boolean" }, why: { type: "string" } }, required: ["same", "why"] });
 
 export function recheckPrompt(f: FactResult) {
-  return `자기소개서 문장과 면접 답변 문장이 같은 경험에 대한 이야기인지 판단하라.
+  return `두 문장이 같은 경험(같은 활동, 같은 대상)을 말하는지 판단하라. 숫자가 서로 다른 것은 판단에 넣지 마라.
 
 자기소개서: "${f.sentence}"
 답변: "${f.answerSentence}"
 
-자기소개서에는 ${f.text}, 답변에는 ${f.said}라고 되어 있다.
-두 문장이 같은 경험·같은 대상을 말하면서 숫자나 역할이 서로 다르면 same=true, 다른 경험이거나 다른 대상(예: 기간 vs 인원)이면 same=false.
-출력: {"same": true 또는 false, "why": "한 문장 이유"}`;
+자기소개서의 "${f.text}"와 답변의 "${f.said}"가 같은 것(예: 둘 다 팀 인원, 둘 다 프로젝트 기간)을 가리키면 same=true.
+활동이 다르거나 가리키는 대상이 다르면(예: 한쪽은 기간, 한쪽은 인원) same=false.
+why에는 판단 근거를 두 문장의 낱말을 써서 직접 적어라.
+JSON만 출력: {"same": ..., "why": ...}`;
 }
+
+// 핵심 낱말이 이만큼 겹치면 같은 경험이 분명하므로 AI 재확인을 하지 않는다.
+// 2026-10-19 여진 검증: 4명↔2명, 6주↔4주처럼 거의 같은 문장인데도 1.7B 모델이 '다른 경험'으로 뒤집음
+export const RECHECK_SKIP_SHARED = 3;
+// AI가 지시문의 틀을 그대로 베껴 쓴 답은 믿지 않는다
+const ECHO_RE = /한 문장 이유|판단 근거|\.\.\./;
 
 /** 답변 전체(질문별 받아쓰기)와 자소서 사실을 대조한다 */
 export async function checkFacts(facts: Fact[], answers: string[], deps: CheckDeps = {}): Promise<{ rows: FactResult[]; mode: "model" | "fallback" }> {
@@ -222,10 +230,16 @@ export async function checkFacts(facts: Fact[], answers: string[], deps: CheckDe
   // 불일치만 이 PC 안 AI가 '정말 같은 경험인가' 다시 본다
   if (deps.ask)
     for (const r of rows.filter((x) => x.verdict === "불일치")) {
+      if (sharedKeywords(r.sentence, r.answerSentence) >= RECHECK_SKIP_SHARED) {
+        r.note += " · 핵심 낱말이 많이 겹쳐 같은 경험으로 봄";
+        continue;
+      }
       try {
         const raw = (await deps.ask(recheckPrompt(r))).replace(/<think>[\s\S]*?<\/think>/g, "");
         const j = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
-        if (j.same === false) Object.assign(r, { verdict: "확인 필요", note: `AI: 다른 경험 이야기일 수 있음 (${norm(String(j.why ?? "")).slice(0, 60)})` });
+        const why = norm(String(j.why ?? ""));
+        if (typeof j.same !== "boolean" || !why || ECHO_RE.test(why)) continue; // 형식만 베낀 답이면 규칙 판정 유지
+        if (j.same === false) Object.assign(r, { verdict: "확인 필요", note: `AI: 다른 경험 이야기일 수 있음 (${why.slice(0, 60)})` });
         else r.note += " · AI도 같은 경험으로 판단";
       } catch {
         /* AI가 안 되면 규칙 판정 유지 */

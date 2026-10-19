@@ -17,6 +17,9 @@ describe("말투 맞추기", () => {
     expect(normalizeSpoken("백이십 명을 조사")).toContain("120명");
     expect(normalizeSpoken("스무 명")).toContain("20명");
     expect(normalizeSpoken("12 프로")).toContain("12%");
+    expect(normalizeSpoken("불량률이 2.1퍼에서 1.3퍼로")).toContain("2.1%에서 1.3%로");
+    expect(normalizeSpoken("3퍼센트")).toContain("3%");
+    expect(normalizeSpoken("5퍼즐")).not.toContain("%");
   });
   it("숫자가 아닌 말은 그대로", () => {
     expect(normalizeSpoken("이번 일은 사람이 중요")).toBe("이번 일은 사람이 중요");
@@ -77,11 +80,30 @@ describe("대조", () => {
     expect(by(rows, "모두의 식탁").verdict).toBe("확인 필요");
   });
 
-  it("AI가 다른 경험이라 하면 불일치 → 확인 필요", async () => {
-    const ask = vi.fn(async () => '{"same": false, "why": "다른 수치"}');
-    const { rows } = await checkFacts(facts, ["설문 응답을 분석해서 이탈률을 20% 줄였습니다."], { ask });
+  it("문장이 조금만 겹칠 때 AI가 다른 경험이라 하면 불일치 → 확인 필요", async () => {
+    const ask = vi.fn(async () => '{"same": false, "why": "답변의 20%는 다른 앱의 이탈률"}');
+    const { rows } = await checkFacts(facts, ["다른 앱에서 설문 결과 이탈률이 20% 나왔습니다."], { ask });
     expect(ask).toHaveBeenCalled();
     expect(by(rows, "12%").verdict).toBe("확인 필요");
+  });
+
+  it("거의 같은 문장이면 AI에 묻지 않고 불일치 유지 (여진 검증 4명↔2명, 6주↔4주)", async () => {
+    const ask = vi.fn(async () => '{"same": false, "why": "다른 경험"}');
+    const r1 = await checkFacts(
+      extractFacts("6개월 동안 4명의 팀원과 함께 지역 택배 회사의 배송 기록 12만 건을 분석했습니다."),
+      ["6개월 동안 지역 택배회사에 배송 기록을 팀원 2명과 같이 분석했습니다"], { ask });
+    expect(by(r1.rows, "4명").verdict).toBe("불일치");
+    const r2 = await checkFacts(
+      extractFacts("특정 라인에서만 치수 불량이 많이 나와, 6주 동안 작업 시간대별 불량 데이터를 모아 분석했습니다."),
+      ["라인에서 치수불량이 많아서 4주 동안 시간대별 불량 데이터를 모아 분석했습니다"], { ask });
+    expect(by(r2.rows, "6주").verdict).toBe("불일치");
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("AI가 지시문 틀을 베껴 쓰면 규칙 판정 유지", async () => {
+    const ask = async () => '{"same": false, "why": "한 문장 이유"}';
+    const { rows } = await checkFacts(facts, ["다른 앱에서 설문 결과 이탈률이 20% 나왔습니다."], { ask });
+    expect(by(rows, "12%").verdict).toBe("불일치");
   });
 
   it("AI가 고장 나도 규칙 판정 유지", async () => {

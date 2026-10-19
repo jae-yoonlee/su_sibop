@@ -1,18 +1,43 @@
-// 자세 규칙: 얼굴 안 보임·고개 돌림·숙임(step3_coaching.CoachRules), 자리 이동(coach_engine), 중앙 이탈·눈동자(웹에서 추가).
+// 자세 규칙: 얼굴 안 보임·고개 돌림·숙임(step3_coaching.CoachRules), 자리 이동(coach_engine), 중앙 이탈·눈동자·딴 곳 보기(웹에서 추가).
 import {
   CENTER_X_TOL, CENTER_Y_RANGE, FACE_GAP_SEC, GAZE_BASE_RATIO, GAZE_BLINK_SKIP, GAZE_MIN_STD, GAZE_WINDOW_SEC,
-  HOLD_SEC, MIN_SHOW_SEC, PITCH_LIMIT, SHIFT_SIZE_RATIO, SHIFT_TOL, SHIFT_Y_TOL, YAW_LIMIT,
+  HOLD_SEC, LOOK_EYE_TOL, LOOK_HEAD_DEG, LOOK_HOLD_SEC, MIN_SHOW_SEC, PITCH_LIMIT, SHIFT_SIZE_RATIO, SHIFT_TOL, SHIFT_Y_TOL, YAW_LIMIT,
 } from "./constants";
 import { EventTracker } from "./events";
 import type { FaceBox, FaceInfo } from "./face";
 import { std } from "./stats";
 
-export type PostureAlert = "away" | "turn" | "down" | "center" | "shift" | "gaze";
-const ORDER: PostureAlert[] = ["away", "turn", "down", "center", "shift", "gaze"];
+export type PostureAlert = "away" | "turn" | "down" | "center" | "shift" | "look" | "gaze";
+const ORDER: PostureAlert[] = ["away", "turn", "down", "center", "shift", "look", "gaze"];
+
+/** 세팅 때 렌즈·질문 카드를 볼 때의 얼굴 각도(정면 기준)와 눈동자 방향 */
+export interface LookTarget {
+  yaw: number;
+  pitch: number;
+  gx: number;
+  gy: number;
+}
 
 export interface PostureBase {
   box: FaceBox; // 세팅 때 얼굴 위치
   gazeStd: number; // 세팅 때 눈동자 흔들림
+  targets?: LookTarget[]; // 렌즈, 질문 카드 (없으면 딴 곳 보기 판정 안 함)
+}
+
+/** 점 p에서 선분 a–b까지 거리 (렌즈와 질문 카드 사이를 오가며 보는 것도 정상) */
+function segDist(p: [number, number], a: [number, number], b: [number, number]) {
+  const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+  const len2 = dx * dx + dy * dy;
+  const k = len2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+  return Math.hypot(p[0] - a[0] - k * dx, p[1] - a[1] - k * dy);
+}
+
+/** 얼굴이나 눈동자가 렌즈~질문 카드 범위를 벗어났는지. 눈 감은 프레임은 판단 보류(null). */
+export function lookingAway(angles: { yaw: number; pitch: number }, info: FaceInfo, targets: LookTarget[]): boolean | null {
+  const [a, b] = targets;
+  if (segDist([angles.yaw, angles.pitch], [a.yaw, a.pitch], [b.yaw, b.pitch]) > LOOK_HEAD_DEG) return true;
+  if (info.blink >= GAZE_BLINK_SKIP) return null;
+  return segDist([info.gazeX, info.gazeY], [a.gx, a.gy], [b.gx, b.gy]) > LOOK_EYE_TOL;
 }
 
 export function offCenter(box: FaceBox) {
@@ -30,6 +55,7 @@ export class PostureRules {
   private since = new Map<string, number>();
   private lastOn = new Map<string, number>();
   private gaze: { t: number; x: number; y: number }[] = [];
+  private lookAway = false;
 
   constructor(private base: PostureBase) {}
 
@@ -55,6 +81,15 @@ export class PostureRules {
     return this.gazeStd >= Math.max(GAZE_MIN_STD, this.base.gazeStd * GAZE_BASE_RATIO);
   }
 
+  /** 고개 돌림·숙임 경고가 따로 있으니 그 수준이면 여기선 빼고, 눈 감은 순간은 직전 판정 유지 */
+  private looking(angles: { yaw: number; pitch: number }, info: FaceInfo | null): boolean {
+    if (!this.base.targets || !info) return false;
+    if (Math.abs(angles.yaw) >= YAW_LIMIT || angles.pitch >= PITCH_LIMIT) return (this.lookAway = false);
+    const r = lookingAway(angles, info, this.base.targets);
+    if (r !== null) this.lookAway = r;
+    return this.lookAway;
+  }
+
   /** angles: 정면 기준으로 보정한 각도 (얼굴 없으면 null) */
   update(t: number, angles: { yaw: number; pitch: number } | null, info: FaceInfo | null, box: FaceBox | null): PostureAlert[] {
     const face = angles !== null && box !== null;
@@ -70,9 +105,10 @@ export class PostureRules {
       down: this.hold("down", face && angles!.pitch >= PITCH_LIMIT, t, gap),
       center: this.hold("center", isCenter, t, gap),
       shift: this.hold("shift", isShift, t, gap),
+      look: this.hold("look", face && !yawOk && this.looking(angles!, info), t, gap),
       gaze: this.hold("gaze", face && this.gazeShaky(t, info), t, gap),
     };
-    for (const [k, sec] of Object.entries(this.held)) if (sec >= HOLD_SEC) this.lastOn.set(k, t);
+    for (const [k, sec] of Object.entries(this.held)) if (sec >= (k === "look" ? LOOK_HOLD_SEC : HOLD_SEC)) this.lastOn.set(k, t);
     const active = ORDER.filter((k) => this.lastOn.has(k) && t - this.lastOn.get(k)! < MIN_SHOW_SEC);
     this.tracker.track(active, t);
     return active;

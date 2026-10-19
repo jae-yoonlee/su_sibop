@@ -27,6 +27,11 @@ export const SHIFT_TOL = 0.08; // 세팅 때 위치에서 가로로 이만큼(�
 export const SHIFT_Y_TOL = 0.08; // [가설] 위아래로 이만큼(화면 높이 비율) 벗어나면 이동 (예전엔 안 봄)
 export const SHIFT_SIZE_RATIO = 0.15; // [가설] 얼굴 폭이 세팅 때보다 15% 넘게 변하면 앞뒤 이동
 
+// ── 딴 곳 보기 [가설] 2026-10-19 사용자 요청: 카메라·질문 말고 다른 곳을 2초 넘게 보면 알림. 기준값은 실측 필요
+export const LOOK_HEAD_DEG = 12.0; // 얼굴 방향이 '렌즈~질문 카드' 사이에서 이 각도 넘게 벗어나면
+export const LOOK_EYE_TOL = 0.25; // 또는 눈동자 방향(-1~1)이 렌즈·질문 볼 때 값 사이에서 이만큼 넘게 벗어나면
+export const LOOK_HOLD_SEC = 2.0;
+
 // ── 눈동자 [가설] step2_face_landmarks.py의 gaze_x/gaze_y 계산식만 재사용, 기준값은 데이터 없음
 export const GAZE_WINDOW_SEC = 4.0; // 최근 이 시간의 눈동자 흔들림을 봄
 export const GAZE_MIN_STD = 0.18; // 흔들림(표준편차)이 이 값 이상이고
@@ -41,6 +46,11 @@ export const MIN_ON_SEC = 0.15;
 export const OFF_HOLD_SEC = 0.3;
 // [가설, 2026-10-19 실사용 피드백] 숨소리·입소리·의자·키보드처럼 작고 짧은 소리가 '말함'으로 잡혀 침묵 타이머가 계속 초기화됐다.
 export const SPEECH_FLOOR_BELOW_VOICE_DB = 20; // 내 목소리 기준보다 이만큼 넘게 작은 소리는 말로 보지 않음 (작은 목소리 경고 6dB보다 훨씬 아래)
+// Silero VAD(말소리 판정 모델) 히스테리시스 [가설: Silero 기본값 0.5, 꺼짐은 0.15 낮게]
+export const VAD_ON_P = 0.5;
+export const VAD_OFF_P = 0.35;
+export const VAD_OFF_HOLD_SEC = 0.3; // 이만큼 이어서 낮아야 말 끝남 (말 사이 짧은 틈 무시)
+export const VAD_STALE_SEC = 1; // 판정이 이보다 오래 안 오면 음량 판정으로 대신
 export const SILENCE_RESET_SEC = 0.3; // 침묵을 끊으려면 이만큼 이어서 말해야 함 (짧은 '음'·기침 한 번은 침묵 유지)
 
 // ── 음성 규칙 [voice_rules.py]
@@ -67,6 +77,7 @@ export const NOISE_MAX_DB = -40.0; // [가설] 측정한 소음이 이보다 크
 
 // ── 알림 간격 [feedback_gate.py] (2026-10-06 결정: 쉴 때만 띄우기는 빼고 간격 규칙은 유지)
 export const CARD_SEC = 2.5;
+export const EYE_RECHECK_SEC = 5.0; // 시선 경고는 한 번 띄우면 이만큼 쉬었다가 다시 확인 (2026-10-19 사용자 요청)
 export const GLOBAL_COOLDOWN = 20.0;
 export const TYPE_COOLDOWN = 45.0;
 export const BUDGET_WINDOW = 60.0;

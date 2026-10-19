@@ -10,6 +10,7 @@ export const ALERT_LABELS: Record<string, string> = {
   down: "고개를 들어 주세요",
   center: "화면 가운데로 와 주세요",
   shift: "처음 앉은 자리로 돌아와 주세요",
+  look: "카메라나 질문을 봐 주세요",
   gaze: "시선을 한곳에 두세요",
   stuck: "말을 이어 가 보세요",
   quiet: "조금 더 크게 말해 주세요",
@@ -22,6 +23,7 @@ export interface AnswerStats {
   alerts: { name: string; label: string; count: number; seconds: number; shown: number }[];
   events: { name: string; start: number; end: number }[]; // 경고 구간 (답변 시작 기준 초) → 녹화 영상에서 그 순간 재생
   log: GateLog[];
+  vadShare: number | null; // 말함 판정 중 Silero로 한 비율 (0~1, 나머지는 음량 판정)
 }
 
 export interface VoiceBase {
@@ -50,8 +52,8 @@ export class AnswerCoach {
   }
 
   /** 마이크 30ms 블록마다 */
-  onAudio(t: number, rms: number) {
-    if (this.voice) this.voiceActive = this.voice.update(t, rms);
+  onAudio(t: number, rms: number, vad: boolean | null = null) {
+    if (this.voice) this.voiceActive = this.voice.update(t, rms, vad);
   }
 
   finish(t: number): AnswerStats {
@@ -80,6 +82,7 @@ export class AnswerCoach {
         .map((e) => ({ name: e.name, start: Math.round((e.start - this.start) * 10) / 10, end: Math.round((e.end - this.start) * 10) / 10 }))
         .sort((a, b) => a.start - b.start),
       log: this.gate.log.map((l) => ({ ...l, t: Math.round((l.t - this.start) * 100) / 100 })),
+      vadShare: this.voice?.blocks ? Math.round((this.voice.sileroBlocks / this.voice.blocks) * 100) / 100 : null,
     };
   }
 }

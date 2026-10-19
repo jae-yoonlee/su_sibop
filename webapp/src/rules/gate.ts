@@ -1,7 +1,8 @@
 // 알림 간격 규칙. feedback_gate.FeedbackGate를 옮기되, 2026-10-06 결정대로 '쉴 때만 띄우기'는 빼고 바로 띄운다.
 // 간격 규칙(전체 20초, 같은 종류 45초, 1분 최대 2개)은 유지. 못 띄운 경고도 모두 log에 남아 통계로 간다.
+// 2026-10-19 사용자 요청: 시선·작은 목소리는 간격 규칙과 따로 바로 띄운다. 시선은 한 번 띄우면 5초 쉬고 다시 확인.
 import {
-  BUDGET_MAX, BUDGET_WINDOW, CARD_SEC, GLOBAL_COOLDOWN, PENDING_MAX_SEC, QUEUE_MAX, TYPE_COOLDOWN,
+  BUDGET_MAX, BUDGET_WINDOW, CARD_SEC, EYE_RECHECK_SEC, GLOBAL_COOLDOWN, PENDING_MAX_SEC, QUEUE_MAX, TYPE_COOLDOWN,
 } from "./constants";
 
 export type Outcome = "shown" | "suppressed" | "report_only" | "dropped";
@@ -15,7 +16,11 @@ export interface GateLog {
 // 측정이 안 되는 상태(얼굴 안 보임)와 침묵은 간격 규칙 없이 바로 띄운다.
 export const STATUS_ALERTS = new Set(["away", "stuck"]);
 // 여러 경고가 대기 중이면 앞쪽부터 띄운다.
-export const PRIORITY = ["turn", "down", "center", "shift", "quiet", "noise", "gaze"];
+export const PRIORITY = ["turn", "down", "center", "shift", "noise"];
+// 작은 목소리: 이어지는 동안 계속 띄움 (다른 경고와 같이 떠도 됨)
+export const LIVE_ALERTS = new Set(["quiet"]);
+// 시선(딴 곳 보기·눈동자 흔들림): 카드로 띄우고, 끝나고 5초 뒤에 아직 그러면 다시
+export const EYE_ALERTS = ["look", "gaze"];
 
 export class FeedbackGate {
   log: GateLog[] = [];
@@ -26,6 +31,7 @@ export class FeedbackGate {
   private typeLast = new Map<string, number>();
   private recent: number[] = [];
   private statusSeen = new Set<string>();
+  private eyeCard: { name: string; at: number } | null = null;
 
   private record(t: number, name: string, outcome: Outcome, reason: string) {
     this.log.push({ t: Math.round(t * 100) / 100, name, outcome, reason });
@@ -42,9 +48,11 @@ export class FeedbackGate {
   update(t: number, active: Iterable<string>): string[] {
     const now = new Set(active);
     const shown = [...now].filter((k) => STATUS_ALERTS.has(k));
-    for (const k of shown) if (!this.statusSeen.has(k)) this.record(t, k, "shown", "STATUS");
+    for (const k of now) if (LIVE_ALERTS.has(k)) shown.push(k);
+    for (const k of shown) if (!this.statusSeen.has(k)) this.record(t, k, "shown", STATUS_ALERTS.has(k) ? "STATUS" : "LIVE");
     this.statusSeen = new Set(shown);
-    const coaching = new Set([...now].filter((k) => !STATUS_ALERTS.has(k)));
+    this.eye(t, now, shown);
+    const coaching = new Set([...now].filter((k) => !STATUS_ALERTS.has(k) && !LIVE_ALERTS.has(k) && !EYE_ALERTS.includes(k)));
 
     for (const k of coaching) {
       if (this.prevActive.has(k)) continue; // 같은 상태가 이어지는 동안 다시 넣지 않음
@@ -81,6 +89,17 @@ export class FeedbackGate {
       shown.push(name);
     }
     return shown;
+  }
+
+  /** 시선 경고: 띄운 카드가 끝나고 EYE_RECHECK_SEC 동안은 다시 확인하지 않는다 (그 사이 상태는 log에만) */
+  private eye(t: number, now: Set<string>, shown: string[]) {
+    const card = this.eyeCard;
+    if (card && t - card.at < CARD_SEC) return void shown.push(card.name);
+    const name = EYE_ALERTS.find((k) => now.has(k));
+    if (!name || (card && t - card.at < CARD_SEC + EYE_RECHECK_SEC)) return;
+    this.eyeCard = { name, at: t };
+    this.record(t, name, "shown", "EYE");
+    shown.push(name);
   }
 
   finish(t: number) {

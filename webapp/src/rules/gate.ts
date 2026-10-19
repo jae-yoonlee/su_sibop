@@ -15,7 +15,7 @@ export interface GateLog {
 // 측정이 안 되는 상태(얼굴 안 보임)와 침묵은 간격 규칙 없이 바로 띄운다.
 export const STATUS_ALERTS = new Set(["away", "stuck"]);
 // 여러 경고가 대기 중이면 앞쪽부터 띄운다.
-export const PRIORITY = ["turn", "down", "center", "quiet", "noise", "gaze", "shift"];
+export const PRIORITY = ["turn", "down", "center", "shift", "quiet", "noise", "gaze"];
 
 export class FeedbackGate {
   log: GateLog[] = [];

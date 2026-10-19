@@ -98,6 +98,13 @@ describe("자세 규칙", () => {
     expect(out).not.toContain("shift");
   });
 
+  it("위아래로 움직여도 shift", () => {
+    const r = new PostureRules(base);
+    let out: string[] = [];
+    run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, cy: CENTER.cy + 0.1 })));
+    expect(out).toContain("shift");
+  });
+
   it("앞뒤로 크게 움직이면 shift", () => {
     const r = new PostureRules(base);
     let out: string[] = [];
@@ -134,6 +141,32 @@ describe("음성", () => {
     expect(out).not.toContain("stuck");
     run(4.93, 5.2, 0.03, (t) => (out = r.update(t, 0.001)));
     expect(out).toContain("stuck");
+  });
+
+  it("숨소리·잡음 수준의 작은 소리는 침묵을 끊지 않음", () => {
+    // 목소리 기준 -20dB. 소리 -46dB는 소음(-60dB)의 5배라 예전엔 '말함'이었지만, 목소리보다 26dB 작음
+    const r = new VoiceRules({ ...vb, voiceDb: -20 }, 0);
+    let out: string[] = [];
+    run(0, 5.5, 0.03, (t) => (out = r.update(t, 0.005)));
+    expect(out).toContain("stuck");
+  });
+
+  it("짧은 소리(0.3초 미만)는 침묵을 끊지 않음", () => {
+    const r = new VoiceRules(vb, 0);
+    let out: string[] = [];
+    run(0, 3, 0.03, (t) => r.update(t, 0.001));
+    run(3.03, 3.2, 0.03, (t) => r.update(t, VOICE));
+    run(3.23, 5.3, 0.03, (t) => (out = r.update(t, 0.001)));
+    expect(out).toContain("stuck");
+  });
+
+  it("30초 안에 침묵이 두 번 와도 두 번 셈", () => {
+    const r = new VoiceRules(vb, 0);
+    run(0, 6, 0.03, (t) => r.update(t, 0.001));
+    run(6.03, 8, 0.03, (t) => r.update(t, VOICE));
+    run(8.03, 14.5, 0.03, (t) => r.update(t, 0.001));
+    r.tracker.finish(14.5);
+    expect(r.tracker.events.filter((e) => e.name === "stuck")).toHaveLength(2);
   });
 
   it("말하면 stuck이 풀림", () => {

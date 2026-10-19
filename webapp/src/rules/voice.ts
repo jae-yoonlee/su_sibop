@@ -2,24 +2,29 @@
 import {
   BLOCK_SEC, MIN_ON_SEC, NOISE_HOLD_SEC, NOISE_MAX_DB, NOISE_PERCENTILE, NOISE_RISE_DB, NOISE_SETUP_SEC, NOISE_WINDOW_SEC,
   OFF_HOLD_SEC, OFF_RATIO, ON_RATIO, QUIET_HOLD, QUIET_MIN_SPEECH, QUIET_OFF_DB, QUIET_ON_DB, QUIET_WINDOW,
-  STUCK_COOLDOWN, STUCK_SEC, VOICE_END_SILENCE_SEC, VOICE_MAX_DB, VOICE_MIN_DB, VOICE_SETUP_SEC,
+  SILENCE_RESET_SEC, SPEECH_FLOOR_BELOW_VOICE_DB, STUCK_SEC, VOICE_END_SILENCE_SEC, VOICE_MAX_DB, VOICE_MIN_DB, VOICE_SETUP_SEC,
 } from "./constants";
 import { EventTracker } from "./events";
 import { median, quantile, toDb } from "./stats";
 
-/** 소음의 몇 배인지로 말함/안 말함을 정한다. noise는 세팅 때 잰 RMS. */
+/** 소음의 몇 배인지로 말함/안 말함을 정한다. noise는 세팅 때 잰 RMS.
+ *  voiceDb(세팅 때 잰 내 목소리)가 있으면 그보다 20dB 넘게 작은 소리(숨소리·잡음)는 말로 보지 않는다. */
 export class EnergyVad {
   speaking = false;
   private aboveSince: number | null = null;
   private belowSince: number | null = null;
+  private onRms: number;
 
-  constructor(private noise: number) {}
+  constructor(private noise: number, voiceDb: number | null = null, private minOn = MIN_ON_SEC) {
+    const floor = voiceDb === null ? 0 : 10 ** ((voiceDb - SPEECH_FLOOR_BELOW_VOICE_DB) / 20);
+    this.onRms = Math.max(noise * ON_RATIO, floor);
+  }
 
   feed(t: number, rms: number): boolean {
     if (!this.speaking) {
-      if (rms > this.noise * ON_RATIO) {
+      if (rms > this.onRms) {
         this.aboveSince ??= t;
-        if (t - this.aboveSince >= MIN_ON_SEC) [this.speaking, this.belowSince] = [true, null];
+        if (t - this.aboveSince >= this.minOn) [this.speaking, this.belowSince] = [true, null];
       } else this.aboveSince = null;
     } else if (rms < this.noise * OFF_RATIO) {
       this.belowSince ??= t;
@@ -113,8 +118,6 @@ export class VoiceRules {
   noiseFloorDb: number | null = null;
   private vad: EnergyVad;
   private silenceSince: number;
-  private stuckFired = false;
-  private lastStuck: number | null = null;
   private lastT: number | null = null;
   private window: { t: number; dt: number; db: number }[] = []; // 말하는 블록만
   private all: { t: number; db: number }[] = []; // 모든 블록 (바닥 소음)
@@ -124,7 +127,7 @@ export class VoiceRules {
 
   /** start: 답변 시작 시각. 답변 시작부터 말이 없어도 침묵으로 센다 (질문 읽는 30초가 생각할 시간). */
   constructor(private base: { noiseRms: number; noiseDb: number; voiceDb: number }, start: number) {
-    this.vad = new EnergyVad(base.noiseRms);
+    this.vad = new EnergyVad(base.noiseRms, base.voiceDb, SILENCE_RESET_SEC);
     this.silenceSince = start;
   }
 
@@ -135,16 +138,11 @@ export class VoiceRules {
     this.speaking = this.vad.feed(t, rms);
     const active: VoiceAlert[] = [];
 
+    // 침묵은 5초 넘을 때마다 매번 센다 (예전엔 30초 안에 두 번째 침묵은 세지도 띄우지도 않았음)
     if (this.speaking) {
-      [this.silenceSince, this.stuckFired] = [t, false];
+      this.silenceSince = t;
       this.feedLevel(t, dt, db);
-    } else {
-      const cooled = this.lastStuck === null || t - this.lastStuck >= STUCK_COOLDOWN;
-      if (t - this.silenceSince >= STUCK_SEC && (this.stuckFired || cooled)) {
-        if (!this.stuckFired) [this.stuckFired, this.lastStuck] = [true, t];
-        active.push("stuck");
-      }
-    }
+    } else if (t - this.silenceSince >= STUCK_SEC) active.push("stuck");
     if (this.quiet) active.push("quiet");
     if (this.noisy(t, db)) active.push("noise");
     this.tracker.track(active, t);

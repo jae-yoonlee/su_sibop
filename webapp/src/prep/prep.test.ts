@@ -105,3 +105,16 @@ describe("분석 흐름", () => {
     expect(last!.coverage.length).toBeGreaterThan(0);
   });
 });
+
+describe("문맥 규칙: 명사만으로는 역량 인정 안 함 (2026-10-19)", () => {
+  const ids = (t: string) => findCompetencies(t, true).map((h) => h.id);
+  it("'재고'라는 단어만으로는 자원관리가 아님", () => {
+    expect(ids("물류센터에서 재고 입고 기록을 남기는 작은 프로그램을 만들었습니다.")).not.toContain("resource");
+  });
+  it("재고를 줄이거나 비용을 아낀 행동은 자원관리", () => {
+    expect(ids("매주 발주량을 조정해 재고를 30% 줄였습니다.")).toContain("resource");
+  });
+  it("'하게 되었다'만으로는 자기개발이 아님", () => {
+    expect(ids("그 결과 다른 팀과 함께 일하게 되었습니다.")).not.toContain("self");
+  });
+});

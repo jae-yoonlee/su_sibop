@@ -2,6 +2,7 @@ import "./styles.css";
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { createLandmarker, openCamera, runFaceLoop, type FrameResult } from "./media/camera";
 import { openMic, type Mic } from "./media/mic";
+import { startVad, type Vad, type VadMode } from "./media/vad";
 import { accuracy } from "./media/cer";
 import { STT_MODE_TEXT, sttMode, Transcriber, type SttMode } from "./media/stt";
 import { CameraSetup, SETUP_MESSAGES } from "./rules/cameraSetup";
@@ -10,7 +11,7 @@ import { AnswerRecorder, fixDuration } from "./media/recorder";
 import { STATUS_ALERTS } from "./rules/gate";
 import { ALERT_LABELS, AnswerCoach, type AnswerStats } from "./rules/session";
 import { toDb } from "./rules/stats";
-import { VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
+import { SileroGate, VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
 import { GEMINI_MODEL } from "./prep/gemini";
 import { checkFacts, extractFacts, RECHECK_SCHEMA, type FactResult } from "./report/facts";
 import { preloadEmbedder } from "./report/embed";
@@ -53,6 +54,8 @@ const S = {
   lm: null as FaceLandmarker | null,
   delegate: "",
   mic: null as Mic | null,
+  vad: null as Vad | null,
+  gate: new SileroGate(),
   cam: new CameraSetup(),
   voice: new VoiceSetup(),
   frame: null as FrameResult | null,
@@ -196,7 +199,7 @@ function sttCheckHtml() {
 }
 
 function overlayHtml() {
-  const meter = `<div class="meter"><i></i><b></b></div><div class="debug" ${S.debug ? "" : "hidden"}></div>`;
+  const meter = `<div class="meter"><i></i><b></b></div><div class="vad-mode" id="vad-mode">${vadLabel()}</div><div class="debug" ${S.debug ? "" : "hidden"}></div>`;
   if (S.phase === "loading") {
     return `<div class="setup-card"><div class="msg">얼굴 분석 모델을 불러오는 중…</div><div>처음 한 번만 몇 초 걸려요</div></div>`;
   }
@@ -309,6 +312,7 @@ function resultHtml() {
     <details><summary>측정 정보 (테스트용)</summary><pre>${JSON.stringify(
       { face: S.delegate, fps: Math.round(S.fps), mic: { autoGainControl: settings.autoGainControl, noiseSuppression: settings.noiseSuppression, sampleRate: settings.sampleRate },
         prep: S.prep && { timings: S.prep.timings, requiredBy: S.prep.requiredBy, questionsBy: S.prep.questionsBy, llm: llmState.kind, notes: S.prep.note },
+        vad: { mode: S.vad?.mode, error: S.vad?.error, sileroShare: S.results.map((r) => r.vadShare) },
         noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), stt: { mode: S.sttMode, check: S.sttCheck }, camera: S.cam.warnings, ua: navigator.userAgent }, null, 2)}</pre></details>
   </div></div>`;
 }
@@ -627,7 +631,10 @@ async function start() {
     S.video = Object.assign(document.createElement("video"), { muted: true, playsInline: true });
     go("loading");
     await openCamera(S.video);
-    S.mic = await openMic(onRms);
+    S.vad?.stop();
+    S.gate = new SileroGate();
+    S.vad = startVad((p) => S.gate.feed(now(), p), onVadMode);
+    S.mic = await openMic(onRms, (frame) => S.vad?.push(frame, now()));
     const { lm, delegate } = await createLandmarker();
     S.lm = lm;
     S.delegate = delegate;
@@ -635,6 +642,7 @@ async function start() {
     go("setup");
   } catch (e) {
     S.mic?.stop();
+    S.vad?.stop();
     (S.video?.srcObject as MediaStream | null)?.getTracks().forEach((t) => t.stop());
     const name = (e as Error).name;
     S.error =
@@ -684,7 +692,20 @@ function onRms(rms: number) {
       return render();
     }
   }
-  if (S.phase === "answer") S.coach?.onAudio(t, rms);
+  if (S.phase === "answer") S.coach?.onAudio(t, rms, S.vad?.mode === "silero" ? S.gate.at(t) : null);
+}
+
+const VAD_LABELS: Record<VadMode, string> = {
+  loading: "말소리 판정 불러오는 중",
+  silero: "말소리 판정: AI(이 PC 안)",
+  energy: "말소리 판정: 음량만 (시끄러우면 침묵을 못 잡을 수 있어요)",
+};
+function vadLabel() {
+  return S.vad ? VAD_LABELS[S.vad.mode] : "";
+}
+function onVadMode(_: VadMode) {
+  const el = $("#vad-mode");
+  if (el) el.textContent = vadLabel();
 }
 
 function finishReadCheck() {
@@ -746,6 +767,7 @@ function tickUi() {
       S.frame?.box ? `cx ${S.frame.box.cx.toFixed(2)} cy ${S.frame.box.cy.toFixed(2)} w ${S.frame.box.w.toFixed(2)}` : "",
       p?.gazeStd != null ? `눈동자 흔들림 ${p.gazeStd.toFixed(3)} (기준 ${S.cam.baseGazeStd.toFixed(3)})` : "",
       `소리 ${S.rmsDb.toFixed(1)}dB 소음 ${S.voice.noiseDb?.toFixed(1) ?? "-"} 목소리 ${S.voice.voiceDb?.toFixed(1) ?? "-"}`,
+      `말소리 판정 ${S.vad?.mode ?? "-"} ${S.vad?.error ?? ""} AI말함 ${S.gate.at(t) === null ? "-" : S.gate.at(t) ? "O" : "X"}`,
       v ? `말함 ${v.speaking ? "O" : "X"} 차이 ${v.levelGapDb?.toFixed(1) ?? "-"} 바닥소음 ${v.noiseFloorDb?.toFixed(1) ?? "-"}` : "",
     ].filter(Boolean).join("\n");
   }

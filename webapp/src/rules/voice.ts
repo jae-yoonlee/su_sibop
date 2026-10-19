@@ -2,7 +2,8 @@
 import {
   BLOCK_SEC, MIN_ON_SEC, NOISE_HOLD_SEC, NOISE_MAX_DB, NOISE_PERCENTILE, NOISE_RISE_DB, NOISE_SETUP_SEC, NOISE_WINDOW_SEC,
   OFF_HOLD_SEC, OFF_RATIO, ON_RATIO, QUIET_HOLD, QUIET_MIN_SPEECH, QUIET_OFF_DB, QUIET_ON_DB, QUIET_WINDOW,
-  SILENCE_RESET_SEC, SPEECH_FLOOR_BELOW_VOICE_DB, STUCK_SEC, VOICE_END_SILENCE_SEC, VOICE_MAX_DB, VOICE_MIN_DB, VOICE_SETUP_SEC,
+  SILENCE_RESET_SEC, SPEECH_FLOOR_BELOW_VOICE_DB, STUCK_SEC, VAD_OFF_HOLD_SEC, VAD_OFF_P, VAD_ON_P, VAD_STALE_SEC, VOICE_END_SILENCE_SEC,
+  VOICE_MAX_DB, VOICE_MIN_DB, VOICE_SETUP_SEC,
 } from "./constants";
 import { EventTracker } from "./events";
 import { median, quantile, toDb } from "./stats";
@@ -31,6 +32,28 @@ export class EnergyVad {
       if (t - this.belowSince >= OFF_HOLD_SEC) [this.speaking, this.aboveSince] = [false, null];
     } else this.belowSince = null;
     return this.speaking;
+  }
+}
+
+/** Silero가 준 '말소리일 확률'(32ms마다)을 말함/안 말함으로. 0.5 넘으면 켜고, 0.35 아래로 0.3초 이어지면 끈다. */
+export class SileroGate {
+  speaking = false;
+  lastT: number | null = null;
+  private lowSince: number | null = null;
+
+  feed(t: number, p: number): boolean {
+    this.lastT = t;
+    if (p > VAD_ON_P) [this.speaking, this.lowSince] = [true, null];
+    else if (this.speaking && p < VAD_OFF_P) {
+      this.lowSince ??= t;
+      if (t - this.lowSince >= VAD_OFF_HOLD_SEC) [this.speaking, this.lowSince] = [false, null];
+    } else this.lowSince = null;
+    return this.speaking;
+  }
+
+  /** 최근 판정이 살아 있으면 말함 여부, 끊겼으면 null (그땐 음량으로 판정) */
+  at(t: number): boolean | null {
+    return this.lastT !== null && t - this.lastT <= VAD_STALE_SEC ? this.speaking : null;
   }
 }
 
@@ -124,6 +147,10 @@ export class VoiceRules {
   private quiet = false;
   private lowSince: number | null = null;
   private noisySince: number | null = null;
+  private vadOnSince: number | null = null;
+  /** 이번 답변에서 Silero로 판정한 블록 비율 (나머지는 음량 판정) */
+  sileroBlocks = 0;
+  blocks = 0;
 
   /** start: 답변 시작 시각. 답변 시작부터 말이 없어도 침묵으로 센다 (질문 읽는 30초가 생각할 시간). */
   constructor(private base: { noiseRms: number; noiseDb: number; voiceDb: number }, start: number) {
@@ -131,11 +158,22 @@ export class VoiceRules {
     this.silenceSince = start;
   }
 
-  update(t: number, rms: number): VoiceAlert[] {
+  /** vad: Silero의 말함 판정 (없으면 null → 음량만으로 판정). 큰 소음은 음량이 커도 Silero가 말이 아니라고 본다. */
+  update(t: number, rms: number, vad: boolean | null = null): VoiceAlert[] {
     const dt = this.lastT === null ? 0 : Math.max(0, t - this.lastT);
     this.lastT = t;
     const db = toDb(rms);
-    this.speaking = this.vad.feed(t, rms);
+    const energy = this.vad.feed(t, rms); // 모델이 끊겼다 돌아와도 바로 이어 쓸 수 있게 항상 돌린다
+    this.blocks++;
+    if (vad === null) this.speaking = energy;
+    else {
+      this.sileroBlocks++;
+      // 말소리이면서 내 목소리보다 20dB 넘게 작지 않아야 (멀리서 들리는 말소리 제외). 0.3초 이어져야 침묵이 끊김.
+      const on = vad && db > this.base.voiceDb - SPEECH_FLOOR_BELOW_VOICE_DB;
+      this.vadOnSince = on ? (this.vadOnSince ?? t) : null;
+      if (!on) this.speaking = false;
+      else if (t - this.vadOnSince! >= SILENCE_RESET_SEC) this.speaking = true;
+    }
     const active: VoiceAlert[] = [];
 
     // 침묵은 5초 넘을 때마다 매번 센다 (예전엔 30초 안에 두 번째 침묵은 세지도 띄우지도 않았음)
@@ -144,7 +182,7 @@ export class VoiceRules {
       this.feedLevel(t, dt, db);
     } else if (t - this.silenceSince >= STUCK_SEC) active.push("stuck");
     if (this.quiet) active.push("quiet");
-    if (this.noisy(t, db)) active.push("noise");
+    if (this.noisy(t, db, vad === true)) active.push("noise");
     this.tracker.track(active, t);
     return active;
   }
@@ -162,13 +200,18 @@ export class VoiceRules {
   }
 
   /** 최근 몇 초 음량의 하위 10%(말 사이 빈틈)가 세팅 때 소음보다 크게 올라가면 주변이 시끄러운 것 */
-  private noisy(t: number, db: number) {
-    this.all.push({ t, db });
+  private noisy(t: number, db: number, speech: boolean) {
+    // Silero가 말소리라고 본 블록은 빼고 잰다 (음량 판정일 땐 하위 10%가 말 사이 빈틈 역할)
+    if (!speech) this.all.push({ t, db });
     while (this.all.length && t - this.all[0].t > NOISE_WINDOW_SEC) this.all.shift();
-    if (t - this.all[0].t < NOISE_WINDOW_SEC * 0.8) return false;
+    if (!this.all.length || t - this.all[0].t < NOISE_WINDOW_SEC * 0.8) return this.held(t);
     this.noiseFloorDb = quantile(this.all.map((a) => a.db), NOISE_PERCENTILE);
     const loud = this.noiseFloorDb - this.base.noiseDb >= NOISE_RISE_DB;
     this.noisySince = loud ? (this.noisySince ?? t) : null;
+    return this.held(t);
+  }
+
+  private held(t: number) {
     return this.noisySince !== null && t - this.noisySince >= NOISE_HOLD_SEC;
   }
 }

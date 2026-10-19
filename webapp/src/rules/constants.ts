@@ -41,6 +41,11 @@ export const MIN_ON_SEC = 0.15;
 export const OFF_HOLD_SEC = 0.3;
 // [가설, 2026-10-19 실사용 피드백] 숨소리·입소리·의자·키보드처럼 작고 짧은 소리가 '말함'으로 잡혀 침묵 타이머가 계속 초기화됐다.
 export const SPEECH_FLOOR_BELOW_VOICE_DB = 20; // 내 목소리 기준보다 이만큼 넘게 작은 소리는 말로 보지 않음 (작은 목소리 경고 6dB보다 훨씬 아래)
+// Silero VAD(말소리 판정 모델) 히스테리시스 [가설: Silero 기본값 0.5, 꺼짐은 0.15 낮게]
+export const VAD_ON_P = 0.5;
+export const VAD_OFF_P = 0.35;
+export const VAD_OFF_HOLD_SEC = 0.3; // 이만큼 이어서 낮아야 말 끝남 (말 사이 짧은 틈 무시)
+export const VAD_STALE_SEC = 1; // 판정이 이보다 오래 안 오면 음량 판정으로 대신
 export const SILENCE_RESET_SEC = 0.3; // 침묵을 끊으려면 이만큼 이어서 말해야 함 (짧은 '음'·기침 한 번은 침묵 유지)
 
 // ── 음성 규칙 [voice_rules.py]

@@ -4,7 +4,7 @@ import { headAngles, faceBox, type FaceInfo } from "./face";
 import { FeedbackGate } from "./gate";
 import { PostureRules } from "./postureRules";
 import { AnswerCoach } from "./session";
-import { EnergyVad, VoiceRules, VoiceSetup } from "./voice";
+import { EnergyVad, SileroGate, VoiceRules, VoiceSetup } from "./voice";
 
 const CENTER = { cx: 0.5, cy: 0.45, w: 0.3 };
 const info = (o: Partial<FaceInfo> = {}): FaceInfo => ({ yaw: 0, pitch: 0, roll: 0, blink: 0, gazeX: 0, gazeY: 0, ...o });
@@ -198,6 +198,51 @@ describe("음성", () => {
     run(0, 10, 0.03, (t) => (out = loud.update(t, 0.0025)));
     run(10.03, 20, 0.03, (t) => (out = loud.update(t, 0.004))); // -48 dB: +12 dB
     expect(out).toContain("noise");
+  });
+
+  it("Silero 판정: 0.5 넘으면 켜고, 0.35 아래 0.3초 이어져야 끔", () => {
+    const g = new SileroGate();
+    expect(g.feed(0, 0.6)).toBe(true);
+    expect(g.feed(0.1, 0.2)).toBe(true); // 말 사이 짧은 틈
+    expect(g.feed(0.2, 0.45)).toBe(true); // 애매한 값은 그대로 유지
+    expect(g.feed(0.3, 0.1)).toBe(true);
+    expect(g.feed(0.6, 0.1)).toBe(false);
+    expect(g.at(0.6)).toBe(false);
+    expect(g.at(2)).toBeNull(); // 판정이 끊기면 음량 판정으로
+  });
+
+  it("시끄러운 곳: 소음이 커도 Silero가 말 아니라고 하면 침묵으로 셈", () => {
+    // 음량 판정은 목소리만큼 큰 소음(-30dB)을 말로 봐서 침묵을 못 잡음
+    const energy = new VoiceRules(vb, 0);
+    const silero = new VoiceRules(vb, 0);
+    let e: string[] = [], s: string[] = [];
+    run(0, 6, 0.03, (t) => {
+      e = energy.update(t, VOICE);
+      s = silero.update(t, VOICE, false);
+    });
+    expect(e).not.toContain("stuck");
+    expect(s).toContain("stuck");
+    expect(silero.sileroBlocks).toBe(silero.blocks);
+  });
+
+  it("Silero 모드: 말소리라도 내 목소리보다 20dB 넘게 작으면(먼 데 말소리) 침묵 유지", () => {
+    const r = new VoiceRules(vb, 0);
+    let out: string[] = [];
+    run(0, 5.5, 0.03, (t) => (out = r.update(t, 0.002, true))); // -54dB
+    expect(out).toContain("stuck");
+    const me = new VoiceRules(vb, 0);
+    run(0, 3, 0.03, (t) => me.update(t, 0.001, false));
+    run(3.03, 5.5, 0.03, (t) => (out = me.update(t, VOICE, true)));
+    expect(out).not.toContain("stuck");
+  });
+
+  it("Silero 모드: 말하는 구간은 빼고 바닥 소음을 잼", () => {
+    // 말을 쉬지 않고 해도(하위 10%가 목소리) 주변 소음 경고가 뜨지 않아야
+    const r = new VoiceRules(vb, 0);
+    let out: string[] = [];
+    run(0, 1, 0.03, (t) => r.update(t, 0.001, false));
+    run(1.03, 20, 0.03, (t) => (out = r.update(t, VOICE, true)));
+    expect(out).not.toContain("noise");
   });
 
   it("세팅: 조용히 있을 때 소리가 크면 소음을 다시 잼", () => {

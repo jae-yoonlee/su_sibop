@@ -111,6 +111,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .toast.status { background: var(--primary); }
 @keyframes pop { from { transform: scale(0.9); opacity: 0; } }
 .meter { position: absolute; left: 24px; bottom: 24px; width: 18px; height: 160px; background: rgba(30, 35, 83, 0.8); border-radius: 9px; overflow: hidden; }
+.vad-mode { position: absolute; left: 52px; bottom: 24px; font-size: 12px; opacity: 0.7; max-width: 40%; }
 .meter i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--green); }
 .meter b { position: absolute; left: -4px; right: -4px; height: 2px; background: #fff; }
 .debug { position: absolute; left: 56px; bottom: 24px; font: 500 12px/1.5 var(--num); background: rgba(0, 0, 0, 0.6); padding: 8px 10px; border-radius: 8px; white-space: pre; }

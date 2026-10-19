@@ -1,11 +1,11 @@
-// 마이크 → 30ms마다 RMS 콜백. 자동 음량 조절·잡음 제거를 꺼야 '목소리 작음'·'주변 소음' 규칙이 의미가 있다.
+// 마이크 → 30ms마다 RMS 콜백, 16kHz 512샘플마다 말소리 판정용 조각 콜백. 자동 음량 조절·잡음 제거를 꺼야 '목소리 작음'·'주변 소음' 규칙이 의미가 있다.
 export interface Mic {
   stream: MediaStream;
   settings: MediaTrackSettings;
   stop(): void;
 }
 
-export async function openMic(onRms: (rms: number) => void): Promise<Mic> {
+export async function openMic(onRms: (rms: number) => void, onFrame?: (frame: Float32Array) => void): Promise<Mic> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { autoGainControl: false, noiseSuppression: false, echoCancellation: false, channelCount: 1 },
   });
@@ -13,7 +13,10 @@ export async function openMic(onRms: (rms: number) => void): Promise<Mic> {
   await ctx.audioWorklet.addModule(`${import.meta.env.BASE_URL}rms-worklet.js`);
   const src = ctx.createMediaStreamSource(stream);
   const node = new AudioWorkletNode(ctx, "rms-processor");
-  node.port.onmessage = (e: MessageEvent<{ rms: number }>) => onRms(e.data.rms);
+  node.port.onmessage = (e: MessageEvent<{ rms?: number; frame?: Float32Array }>) => {
+    if (e.data.rms !== undefined) onRms(e.data.rms);
+    else if (e.data.frame) onFrame?.(e.data.frame);
+  };
   src.connect(node);
   // 출력에 연결하지 않으면 일부 브라우저가 처리를 멈추므로, 소리 0으로 연결
   const mute = ctx.createGain();

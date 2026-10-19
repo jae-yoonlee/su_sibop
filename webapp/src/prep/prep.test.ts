@@ -83,6 +83,7 @@ describe("질문", () => {
     expect(styleProblem("지원자가 현장 반장님들께 데이터를 보여 드렸어?", R15)).not.toBe("");
     expect(styleProblem("지원자가 현장 반장님들께 데이터를 보여 드렸나요?", R15)).toBe("3인칭으로 부름");
     expect(styleProblem("그때 레진으로 치수불량을 분석하셨나요?", R15)).toContain("레진");
+    expect(styleProblem("불량률 변화를 숫자로 말씀해 주시겠어요?", R15)).toBe("답하는 방법을 시킴");
     // 정상 질문은 통과
     expect(styleProblem("6주 동안 시간대별 불량 데이터를 어떻게 모으셨나요?", R15)).toBe("");
     expect(styleProblem("현장 반장님들을 설득할 때 가장 어려웠던 점은 무엇이었습니까?", R15)).toBe("");

@@ -62,7 +62,7 @@ export function questionSlots(resume: string, coverage: Coverage[]): Slot[] {
   // 상황 질문은 경험 문장이어야 의미가 있어, 갈등·협업 문장이 없으면 경험 질문의 문장을 다시 쓴다
   const sit = take(SITUATION.test.bind(SITUATION)) || exp;
   return [
-    { type: "경험", evidence: exp, quote: quoteClause(exp), focus: "이 경험에서 본인이 맡은 역할·기간·결과 수치를 구체적으로 묻는다." },
+    { type: "경험", evidence: exp, quote: quoteClause(exp), focus: "이 경험에서 본인이 맡은 역할과 결과가 어땠는지 묻는다. 답하는 방법(숫자로, 짧게 등)은 시키지 않는다." },
     {
       type: "직무",
       evidence: jobEv,
@@ -112,6 +112,9 @@ const COMMON_NOUNS = new Set(("본인 당시 그때 경험 역할 결과 과정 
 // 낱말 뒤 조사. '을·은·는·이·가'는 '생겼을·많은'처럼 말끝과 헷갈려서 뺀다
 const JOSA_NOUN = /([가-힣A-Za-z]{2,}?)(?:으로|로|를|에서|에게|과|와|의)(?=[\s?.,!]|$)/g;
 
+// "숫자로 말씀해 주세요"처럼 답하는 방식을 시키는 질문 (실제 면접 질문은 내용만 묻는다, 2026-10-19 재윤 요청)
+export const COACHING = /(숫자|수치|퍼센트|한 문장|두 문장|세 문장|짧게|간단히|STAR)[^?.!]{0,8}?(말씀해|답해|설명해|바꿔|표현해|정리해)/;
+
 /** 면접 질문 말투·내용 검사 (본질문·꼬리질문 공통). sources: 질문이 기대도 되는 글(자소서·답변). 통과하면 "" 아니면 이유.
  *  2026-10-19 여진 검증: 평서문("~했습니다."), 반말("~있었어?"), 3인칭("지원자가"), 자소서에 없는 낱말("레진")이 나옴 */
 export function styleProblem(q: string, sources: string): string {
@@ -119,6 +122,7 @@ export function styleProblem(q: string, sources: string): string {
   if (!/(까|요)\?$|(까요|나요|가요|세요|습니까|ㅂ니까)[?.]?$/.test(q)) return "존댓말 물음이 아님";
   if (/(니|냐|어|야|지)\?$/.test(q)) return "반말";
   if (/지원자(가|는|께서|님|의)/.test(q)) return "3인칭으로 부름";
+  if (COACHING.test(q)) return "답하는 방법을 시킴";
   const src = sources.replace(/\s/g, "");
   for (const m of q.matchAll(JOSA_NOUN)) {
     const w = m[1];

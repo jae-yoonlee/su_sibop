@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAiFollowup, chooseIssue, findIssues, followupPrompt, makeFollowup, templateQuestion } from "./followup";
+import { checkAiFollowup, chooseIssue, findIssues, followupPrompt, makeFollowup, templateQuestion, COACHING } from "./followup";
 import type { Question } from "./questions";
 
 // poc/face-realtime/test_followup_gen.py와 같은 예시
@@ -112,5 +112,26 @@ describe("꼬리질문 만들기", () => {
     const q = "본인이 직접 맡았던 일은 무엇이었나요?";
     const f = await makeFollowup(MAIN, SOFT, { ask: async () => JSON.stringify({ question: q }), history: [q], rand: first });
     expect(f.source).toBe("rule");
+  });
+});
+
+describe("답하는 방법을 시키는 질문 막기 (2026-10-19)", () => {
+  it("예전 문장은 걸림", () => {
+    for (const q of ["그 결과를 숫자로 말씀해 주시겠어요?", "그 말을 숫자나 행동으로 바꿔 말씀해 주시겠어요?", "핵심만 한 문장으로 다시 말씀해 주시겠어요?", "구체적인 수치로 설명해 주세요."])
+      expect(COACHING.test(q)).toBe(true);
+  });
+  it("실제 면접관식 후속질문은 통과 (행동면접 가이드 예시를 옮김)", () => {
+    for (const q of ["그래서 결과는 어땠나요?", "그중 본인이 맡은 역할은 무엇이었나요?", "구체적으로 어떤 행동을 하셨나요?", "그 일로 무엇이 달라졌나요?", "자기소개서의 12%는 어떻게 나온 숫자인가요?"])
+      expect(COACHING.test(q)).toBe(false);
+  });
+  it("틀 문장은 하나도 걸리지 않음", () => {
+    const rand = () => 0;
+    const names = ["mismatch", "missing_fact", "no_result", "no_role", "team_heavy", "vague", "generic", "no_text"] as const;
+    for (const name of names)
+      for (const r of [0, 0.99]) {
+        const q = templateQuestion({ name, slots: { quote: "우리가 열심히 했습니다", doc: "12%", said: "20%" } }, () => r);
+        expect(COACHING.test(q), q).toBe(false);
+      }
+    void rand;
   });
 });

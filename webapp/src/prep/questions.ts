@@ -62,7 +62,7 @@ export function questionSlots(resume: string, coverage: Coverage[]): Slot[] {
   // 상황 질문은 경험 문장이어야 의미가 있어, 갈등·협업 문장이 없으면 경험 질문의 문장을 다시 쓴다
   const sit = take(SITUATION.test.bind(SITUATION)) || exp;
   return [
-    { type: "경험", evidence: exp, quote: quoteClause(exp), focus: "이 경험에서 본인이 맡은 역할·기간·결과 수치를 구체적으로 묻는다." },
+    { type: "경험", evidence: exp, quote: quoteClause(exp), focus: "이 경험에서 본인이 맡은 역할과 결과가 어땠는지 묻는다. 답하는 방법(숫자로, 짧게 등)은 시키지 않는다." },
     {
       type: "직무",
       evidence: jobEv,
@@ -90,7 +90,9 @@ ${list}
 - 인용은 위의 표현을 그대로 쓴다. 문장을 중간에 자르거나 '…', '...'을 쓰지 않는다.
 - "어떻게 생각하시나요"처럼 막연하게 묻지 않는다.
 - 근거에 없는 경험·숫자를 지어내지 않는다.
-- 존댓말 한 문장, 90자 이내.
+- 끝은 반드시 '~나요?', '~습니까?', '~주세요.' 같은 존댓말 물음. '~했습니다.'로 끝나는 설명문, 반말을 쓰지 않는다.
+- 상대를 '지원자'라고 부르지 말고 '본인'이라고 한다. 근거에 없는 낱말(재료·도구 이름 등)을 쓰지 않는다.
+- 한 문장, 90자 이내.
 
 출력: {"questions": ["1번 질문", "2번 질문", "3번 질문"]}`;
 }
@@ -103,10 +105,38 @@ export const QUESTION_SCHEMA = JSON.stringify({
 
 const norm = (s: string) => (s ?? "").replace(/\s+/g, " ").trim();
 
+// 면접관이 쓰는 흔한 낱말 (자소서에 없어도 됨)
+const COMMON_NOUNS = new Set(("본인 당시 그때 경험 역할 결과 과정 이유 방법 어려움 문제 해결 상황 직무 회사 팀 무엇 성과 계기 기준 판단 " +
+  "의견 갈등 동료 팀원 점 부분 생각 말씀 사례 일 노력 목표 근거 수치 숫자 행동 선택 결정 변화 영향 배운 점 강점 약점 " +
+  "장점 단점 구체적 직접 처음 마지막 다음 지원 동기 업무 고객 실패 성공 협업 소통 책임 리더 우선순위 시간 기간 자료 데이터 분석 개선 효과 차이 방식 내용 질문 답변 자기소개서 자소서").split(" "));
+// 낱말 뒤 조사. '을·은·는·이·가'는 '생겼을·많은'처럼 말끝과 헷갈려서 뺀다
+const JOSA_NOUN = /([가-힣A-Za-z]{2,}?)(?:으로|로|를|에서|에게|과|와|의)(?=[\s?.,!]|$)/g;
+
+// "숫자로 말씀해 주세요"처럼 답하는 방식을 시키는 질문 (실제 면접 질문은 내용만 묻는다, 2026-10-19 재윤 요청)
+export const COACHING = /(숫자|수치|퍼센트|한 문장|두 문장|세 문장|짧게|간단히|STAR)[^?.!]{0,8}?(말씀해|답해|설명해|바꿔|표현해|정리해)/;
+
+/** 면접 질문 말투·내용 검사 (본질문·꼬리질문 공통). sources: 질문이 기대도 되는 글(자소서·답변). 통과하면 "" 아니면 이유.
+ *  2026-10-19 여진 검증: 평서문("~했습니다."), 반말("~있었어?"), 3인칭("지원자가"), 자소서에 없는 낱말("레진")이 나옴 */
+export function styleProblem(q: string, sources: string): string {
+  // 존댓말 물음(~까?, ~요?) 또는 부탁(~주세요.)만. "~다."로 끝나는 평서문, "~어?/~니?" 반말은 탈락
+  if (!/(까|요)\?$|(까요|나요|가요|세요|습니까|ㅂ니까)[?.]?$/.test(q)) return "존댓말 물음이 아님";
+  if (/(니|냐|어|야|지)\?$/.test(q)) return "반말";
+  if (/지원자(가|는|께서|님|의)/.test(q)) return "3인칭으로 부름";
+  if (COACHING.test(q)) return "답하는 방법을 시킴";
+  const src = sources.replace(/\s/g, "");
+  for (const m of q.matchAll(JOSA_NOUN)) {
+    const w = m[1];
+    if (COMMON_NOUNS.has(w) || /[적므]$/.test(w) || src.includes(w.slice(0, 2))) continue;
+    return `자소서·답변에 없는 낱말: ${w}`;
+  }
+  return "";
+}
+
 /** AI 질문 하나 검사. 통과하면 "" 아니면 이유 */
 export function questionProblem(q: string, resume: string): string {
   if (q.length < 8 || q.length > 120) return "길이";
-  if (!/[?요다][.!]?$/.test(q)) return "물음 형태 아님";
+  const style = styleProblem(q, resume);
+  if (style) return style;
   if (/…|\.\.\./.test(q)) return "말을 중간에 자름";
   if (/어떻게 생각하시/.test(q)) return "막연한 물음";
   const made = (q.match(/\d+/g) ?? []).filter((n) => !resume.includes(n));

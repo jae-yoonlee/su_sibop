@@ -2,7 +2,7 @@
 // 2026-10-14: 꼬리질문은 반드시 방금 답변을 인용한다 (자소서 숫자만 보고 묻던 것이 '답변을 안 본다'는 지적을 받음).
 // poc/face-realtime/followup_gen.py의 규칙·문장 틀·검사를 옮김. 차이: 파이썬은 사실 확인(숫자)을 AI 없이 틀 문장으로 물었지만,
 // 여기서는 자소서 관련 질문은 로컬 AI가 쓰도록(2026-10-12 결정) AI에 정해진 이유 하나만 주고, 검사에 떨어지거나 늦을 때만 틀 문장을 쓴다.
-import type { Question } from "./questions";
+import { styleProblem, type Question } from "./questions";
 
 export const FOLLOWUP_TARGET_SEC = 5; // 답변이 끝나고 이 안에 꼬리질문을 띄우는 것이 목표
 export const FOLLOWUP_MAX_SEC = 12; // AI가 이때까지도 못 쓰면 틀 문장 (화면·결과에 표시)
@@ -208,7 +208,8 @@ export function checkAiFollowup(raw: string, issue: Issue, main: Question, answe
     throw new Error("형식이 다름");
   }
   if (!q || q.length > MAX_LEN) throw new Error("빈 질문이거나 너무 김");
-  if (!/(까|요|세요)\??[.!]?$|\?$/.test(q)) throw new Error("존댓말 물음이 아님");
+  const style = styleProblem(q, `${main.question} ${main.evidence ?? ""} ${answer} ${issue.slots.quote ?? ""} ${issue.slots.doc ?? ""}`);
+  if (style) throw new Error(style);
   const allowed = new Set(`${main.evidence ?? ""} ${answer}`.match(/\d+/g) ?? []);
   const made = (q.match(/\d+/g) ?? []).filter((n) => !allowed.has(n));
   if (made.length) throw new Error(`없던 숫자를 만듦: ${made.join(",")}`);

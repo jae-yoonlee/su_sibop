@@ -23,6 +23,7 @@ export interface AnswerStats {
   alerts: { name: string; label: string; count: number; seconds: number; shown: number }[];
   events: { name: string; start: number; end: number }[]; // 경고 구간 (답변 시작 기준 초) → 녹화 영상에서 그 순간 재생
   log: GateLog[];
+  shiftBy: { x: number; y: number; size: number }; // 자리 이동으로 본 시간(초), 축별
   vadShare: number | null; // 말함 판정 중 Silero로 한 비율 (0~1, 나머지는 음량 판정)
 }
 
@@ -82,6 +83,7 @@ export class AnswerCoach {
         .map((e) => ({ name: e.name, start: Math.round((e.start - this.start) * 10) / 10, end: Math.round((e.end - this.start) * 10) / 10 }))
         .sort((a, b) => a.start - b.start),
       log: this.gate.log.map((l) => ({ ...l, t: Math.round((l.t - this.start) * 100) / 100 })),
+      shiftBy: Object.fromEntries(Object.entries(this.posture.shiftBy).map(([k, v]) => [k, Math.round(v * 10) / 10])) as AnswerStats["shiftBy"],
       vadShare: this.voice?.blocks ? Math.round((this.voice.sileroBlocks / this.voice.blocks) * 100) / 100 : null,
     };
   }

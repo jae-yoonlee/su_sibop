@@ -7,7 +7,7 @@ vi.mock("../report/embed", async (orig) => {
 });
 import { checkResume, findCompetencies, requiredFromRules } from "./competency";
 import { parseRequired } from "./gemini";
-import { parseAiQuestions, questionPrompt, questionProblem, questionSlots, quoteClause, ruleQuestions } from "./questions";
+import { parseAiQuestions, questionPrompt, questionProblem, questionSlots, quoteClause, ruleQuestions, styleProblem } from "./questions";
 import { runPrep, type PrepState } from "./pipeline";
 
 const POSTING = `[자격요건] 다양한 부서와 원활하게 협업할 수 있는 분.
@@ -74,6 +74,20 @@ describe("질문", () => {
     expect(questions[0]).toMatchObject({ source: "ai", evidence: fallback[0].evidence });
     expect(questions[1]).toEqual(fallback[1]);
     expect(questions[2].source).toBe("ai");
+  });
+
+  it("여진 검증에서 나온 이상한 질문은 탈락 (평서문·반말·3인칭·없는 낱말)", () => {
+    const R15 = "자동차 부품 회사에서 3개월 동안 품질팀 현장실습을 했습니다. 특정 라인에서만 치수 불량이 많이 나와, 6주 동안 작업 시간대별 불량 데이터를 모아 분석했습니다. 현장 반장님들께 데이터를 보여 드리며 설명했습니다.";
+    expect(styleProblem("자동차 부품 회사에서 3개월 동안 품질팀 현장실습을 했었고, 품질 관리 역량을 실천해왔습니다.", R15)).toBe("존댓말 물음이 아님");
+    expect(styleProblem("그때 레진으로 치수불량을 분석한 적이 있었어?", R15)).not.toBe("");
+    expect(styleProblem("지원자가 현장 반장님들께 데이터를 보여 드렸어?", R15)).not.toBe("");
+    expect(styleProblem("지원자가 현장 반장님들께 데이터를 보여 드렸나요?", R15)).toBe("3인칭으로 부름");
+    expect(styleProblem("그때 레진으로 치수불량을 분석하셨나요?", R15)).toContain("레진");
+    expect(styleProblem("불량률 변화를 숫자로 말씀해 주시겠어요?", R15)).toBe("답하는 방법을 시킴");
+    // 정상 질문은 통과
+    expect(styleProblem("6주 동안 시간대별 불량 데이터를 어떻게 모으셨나요?", R15)).toBe("");
+    expect(styleProblem("현장 반장님들을 설득할 때 가장 어려웠던 점은 무엇이었습니까?", R15)).toBe("");
+    expect(styleProblem("품질팀 현장실습에서 맡은 역할을 구체적으로 말씀해 주세요.", R15)).toBe("");
   });
 
   it("질문 인용은 중간에 자르지 않음: 긴 문장은 숫자 있는 구절을 골라 '~다'로 맺음", () => {

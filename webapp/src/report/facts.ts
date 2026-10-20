@@ -48,7 +48,8 @@ const AFFIX_SAFE = new Set(["개월", "퍼센트", "프로", "%", "시간"]);
 // 단위 뒤는 끝이거나 조사여야 한다 ("한 개발", "네 명확히"는 숫자가 아님)
 const AFTER = "(?=$|[^가-힣]|이|가|을|를|은|는|의|에|도|만|과|와|로|으로|동안|간|째|씩|정도|쯤|이상|이하|부터|까지|짜리|여)";
 const SINO_RE = new RegExp(`(^|[^가-힣])([일이삼사오육칠팔구십백천만]{1,6})\\s?${UNIT_RE}${AFTER}`, "g");
-const NATIVE_RE = new RegExp(`(^|[^가-힣])(열|스물|스무|서른|마흔|쉰)?\\s?(한|하나|두|둘|세|셋|석|네|넷|다섯|여섯|일곱|여덟|아홉)?\\s?(달|명|개|번|살|시간|주|배|건)${AFTER}`, "g");
+// 앞 글자 뒤 띄어쓰기도 같이 잡아 둬야 "습니다. 여섯 달"이 "습니다.6개월"로 붙지 않는다
+const NATIVE_RE = new RegExp(`(^|[^가-힣]\\s?)(열|스물|스무|서른|마흔|쉰)?\\s?(한|하나|두|둘|세|셋|석|네|넷|다섯|여섯|일곱|여덟|아홉)?\\s?(달|명|개|번|살|시간|주|배|건)${AFTER}`, "g");
 
 /** "세 달" → "3개월", "삼십 퍼센트" → "30%", "6달" → "6개월" */
 export function normalizeSpoken(text: string): string {
@@ -76,7 +77,8 @@ export function normalizeSpoken(text: string): string {
 
 // ── 자소서에서 사실 뽑기 ──
 const PERIOD_RE = /(\d+(?:\.\d+)?)\s?(개월|주|일|년|달)(?:\s?(?:동안|간))?/g;
-const NUMBER_RE = /(\d+(?:[.,]\d+)?)\s?(%|퍼센트|프로|명|배|건|개|원|만 원|시간|점|위|등|회)/g;
+// "6개월"의 "6개"는 숫자가 아니라 기간이라서 "개" 뒤에 "월"이 오면 뺀다 (2026-10-19)
+const NUMBER_RE = /(\d+(?:[.,]\d+)?)\s?(%|퍼센트|프로|명|배|건|개(?!월)|원|만 원|시간|점|위|등|회)/g;
 const LEAD = ["팀장", "리더", "조장", "회장", "대표", "파트장", "PM", "PL", "총괄"];
 const SUB_LEAD = ["부팀장", "부조장", "부회장", "부리더"];
 const MEMBER = ["팀원", "조원", "구성원", "참여자", "멤버"];
@@ -210,7 +212,7 @@ export async function checkFacts(facts: Fact[], answers: string[], deps: CheckDe
       for (const s of [...related, ...sents]) {
         const words = Object.entries(ROLE_GROUPS).flatMap(([g, ws]) => ws.filter((w) => s.text.includes(w)).map((w) => ({ g, w })));
         const same = words.find((x) => x.g === f.value);
-        if (same) return hit(s, "일치", `'${same.w}'라고 말함`);
+        if (same) return hit(s, "일치", `답변에 '${same.w}' 있음`);
       }
       for (const s of related) {
         const other = Object.entries(ROLE_GROUPS).find(([g, ws]) => g !== f.value && ws.some((w) => new RegExp(`${w}(으로|로|이었|였|을 맡|를 맡)`).test(s.text)));

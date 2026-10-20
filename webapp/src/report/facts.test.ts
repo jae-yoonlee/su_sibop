@@ -111,3 +111,13 @@ describe("대조", () => {
     expect(by(rows, "12%").verdict).toBe("불일치");
   });
 });
+
+describe("2026-10-19 고친 것", () => {
+  it("'6개월'에서 숫자 '6개'를 따로 뽑지 않음", () => {
+    const f = extractFacts("6개월 동안 사과 3개를 팔았습니다.");
+    expect(f.map((x) => x.text)).toEqual(["6개월", "3개"]);
+  });
+  it("말투 숫자를 바꿀 때 앞 띄어쓰기를 지우지 않음", () => {
+    expect(normalizeSpoken("맡았습니다. 여섯 달 동안")).toBe("맡았습니다. 6개월 동안");
+  });
+});

@@ -24,7 +24,7 @@ export interface Issue { name: IssueName; slots: Record<string, string> }
 export const ISSUE_LABELS: Record<IssueName, string> = {
   mismatch: "숫자가 자기소개서와 다름",
   missing_fact: "자기소개서에 적은 숫자를 말하지 않음",
-  no_result: "결과를 숫자로 말하지 않음",
+  no_result: "결과를 말하지 않음",
   no_role: "본인이 한 일을 말하지 않음",
   team_heavy: "'우리·팀' 위주라 본인 기여 비중이 불분명",
   vague: "모호한 표현",
@@ -36,10 +36,10 @@ export const ISSUE_LABELS: Record<IssueName, string> = {
 const INTENT: Record<IssueName, (s: Record<string, string>) => string> = {
   mismatch: (s) => `자기소개서에는 ${s.doc}, 답변에서는 ${s.said}라고 했다. 어느 쪽이 맞는지 확인하라.`,
   missing_fact: (s) => `답변의 '${s.quote}' 부분과 자기소개서에 적은 ${s.doc}가 어떻게 연결되는지 물어라.`,
-  no_result: (s) => `답변의 '${s.quote}' 부분에 결과 수치가 없다. 그 결과를 숫자로 묻는다.`,
+  no_result: (s) => `답변의 '${s.quote}' 부분에 결과가 없다. 그래서 어떻게 되었는지 묻는다.`,
   no_role: (s) => `답변의 '${s.quote}' 부분에서 본인이 직접 한 일이 안 보인다. 본인 역할을 묻는다.`,
   team_heavy: (s) => `답변의 '${s.quote}'처럼 '우리·팀' 이야기뿐이라 본인 기여가 불분명하다. 본인 기여 비중을 묻는다.`,
-  vague: (s) => `답변의 '${s.quote}'라는 모호한 표현을 구체적인 행동이나 숫자로 묻는다.`,
+  vague: (s) => `답변의 '${s.quote}'라는 모호한 표현에서 실제로 무엇을 했는지 묻는다.`,
   generic: (s) => `답변의 '${s.quote}' 부분을 더 깊게 묻는다 (어려웠던 점, 판단 이유, 구체적 행동 중 하나).`,
   no_text: () => "답변을 받아쓰지 못했다. 방금 답변의 핵심을 다시 묻는다.",
 };
@@ -53,15 +53,20 @@ const TEMPLATES: Record<IssueName, string[]> = {
     "'{quote}'라고 하셨는데, 자기소개서에 적은 {doc_와}는 어떻게 이어지나요?",
     "'{quote}' 부분에서, 자기소개서의 {doc_는} 어떻게 나온 숫자인가요?",
   ],
-  no_result: ["'{quote}'라고 하셨는데, 그 결과를 숫자로 말씀해 주시겠어요?", "'{quote}' 덕분에 무엇이 얼마나 달라졌나요?"],
+  no_result: ["'{quote}'라고 하셨는데, 그래서 결과는 어땠나요?", "'{quote}' 이후에 무엇이 달라졌나요?"],
   no_role: ["'{quote}'라고 하셨는데, 그중 본인이 직접 한 일은 무엇이었나요?", "'{quote}' 부분에서 본인이 맡은 역할을 말씀해 주시겠어요?"],
   team_heavy: ["'{quote}'라고 하셨는데, 그중 본인 기여는 어느 정도였나요?", "'{quote}' 부분에서 팀원들과 달리 본인만 맡은 일은 무엇인가요?"],
-  vague: ["'{quote}'라고 하셨는데, 구체적으로 어떤 행동을 하셨나요?", "'{quote}'라는 말을 숫자나 행동으로 바꿔 말씀해 주시겠어요?"],
+  vague: ["'{quote}'라고 하셨는데, 구체적으로 어떤 행동을 하셨나요?", "'{quote}'라고 하셨는데, 그때 실제로 어떤 일을 하셨나요?"],
   generic: ["'{quote}'라고 하셨는데, 그때 가장 어려웠던 점은 무엇이었나요?", "'{quote}' 부분을 조금 더 구체적으로 말씀해 주시겠어요?"],
-  no_text: ["방금 답변이 잘 들리지 않았어요. 핵심만 한 문장으로 다시 말씀해 주시겠어요?"],
+  no_text: ["방금 답변이 잘 들리지 않았어요. 다시 한번 말씀해 주시겠어요?"],
 };
 
 const norm = (s: string) => (s ?? "").replace(/\s+/g, " ").trim();
+
+// 실제 면접관은 '무엇을 했고 어떻게 되었는지'를 묻지, '숫자로 말하라'처럼 답하는 방법을 시키지 않는다.
+// 근거: 행동면접 가이드(켄터키대 HR BBI quick guide, CodeSignal 'Probing with STAR')의 후속질문 예시는
+// "결과는 어땠나요?", "본인 역할은 무엇이었나요?"처럼 내용을 묻고, 답을 유도하는 질문은 피하라고 함 (2026-10-19)
+export const COACHING = /(숫자|수치|퍼센트|한 문장|두 문장|세 문장|짧게|간단히|STAR)[^?.!]{0,8}?(말씀해|답해|설명해|바꿔|표현해|정리해)/;
 
 /** '12%', '6개월' 같은 숫자+단위 → 단위별 숫자 집합 */
 export function facts(text: string): Map<string, Set<string>> {
@@ -182,7 +187,7 @@ export function followupPrompt(main: Question, answer: string, issue: Issue, pre
 
 지시: ${INTENT[issue.name](issue.slots)}
 ${previous.length ? `이미 한 질문과 비슷하게 묻지 마라: ${previous.slice(-3).join(" / ")}\n` : ""}
-규칙: 지원자가 방금 한 말을 짧게 인용하거나 짚어서 묻는다. 존댓말 한 문장, 70자 이내. 답변과 자기소개서에 없는 숫자·사실을 지어내지 않는다.
+규칙: 지원자가 방금 한 말을 짧게 인용하거나 짚어서 묻는다. 존댓말 한 문장, 70자 이내. 답변과 자기소개서에 없는 숫자·사실을 지어내지 않는다.\n'숫자로', '한 문장으로', '구체적인 수치로'처럼 답하는 방법을 시키지 말고, 실제 면접관처럼 무엇을 했고 어떻게 되었는지를 묻는다.
 출력: {"question": "..."}`;
 }
 

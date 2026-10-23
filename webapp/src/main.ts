@@ -15,6 +15,9 @@ import { toDb } from "./rules/stats";
 import { SileroGate, VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
 import { GEMINI_MODEL } from "./prep/gemini";
 import { checkFacts, extractFacts, RECHECK_SCHEMA, type FactResult } from "./report/facts";
+import { answerCompetency } from "./report/answerComp";
+import { FEEDBACK_SCHEMA, makeFeedback, type Feedback } from "./report/feedback";
+import { JUDGE_SCHEMA } from "./prep/judge";
 import { preloadEmbedder } from "./report/embed";
 import { currentModel, followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
 import { FOLLOWUP_TARGET_SEC, ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
@@ -81,6 +84,8 @@ const S = {
   recError: "",
   facts: null as null | "running" | { rows: FactResult[]; mode: "model" | "fallback"; ms: number }, // 자소서 ↔ 답변 사실 대조
   factOff: new Set<string>(), // 사용자가 대조에서 뺀 항목
+  answerComp: null as null | "running" | Awaited<ReturnType<typeof answerCompetency>>, // 필요역량이 답변에서도 드러났나
+  feedback: null as null | "running" | Feedback, // 이 PC 안 AI 종합 피드백
 };
 const cur = () => S.asked[S.asked.length - 1];
 const curQ = () => cur()?.text ?? "";
@@ -98,6 +103,8 @@ function resetRun() {
   S.clips = [];
   S.recError = "";
   S.facts = null;
+  S.answerComp = null;
+  S.feedback = null;
   S.factOff.clear();
 }
 
@@ -301,6 +308,7 @@ function resultHtml() {
       <div class="stat"><div class="v">${shown}</div><div class="k">화면에 띄운 알림</div></div>
       <div class="stat"><div class="v" style="font-size:32px;line-height:1.2">${top}</div><div class="k">가장 많이 받은 경고</div></div>
     </div>
+    ${feedbackHtml()}
     ${coverageHtml()}
     <div class="card-dark">
       <h2 style="margin-top:0">경고별 누적</h2>
@@ -310,6 +318,7 @@ function resultHtml() {
       <p style="opacity:.75;font-size:14px">판정: 경고 종류별로 ${TOTAL}문항 전체에서 ${WARN_COUNT - 1}회까지 정상, ${WARN_COUNT}~${PROBLEM_COUNT - 1}회 주의, ${PROBLEM_COUNT}회 이상 문제. 알림은 답변을 방해하지 않게 20초에 하나, 1분에 2개까지만 띄우지만, 못 띄운 경고도 여기에는 모두 들어가요.</p>
       ${evidenceHtml()}
       ${factsHtml()}
+      ${answerCompHtml()}
       <h2>질문별</h2>
       <table>${perQ}</table>
     </div>
@@ -331,6 +340,8 @@ const VERDICT_CLASS: Record<string, string> = { 일치: "ok", 불일치: "bad", 
 
 /** 받아쓰기가 다 모이면 한 번 돈다. 자소서·답변은 이 PC 안에서만 비교 */
 function runFactCheck() {
+  // 받아쓰기가 안 되는 브라우저도 자세·목소리 경고로 종합 피드백은 쓴다
+  if (S.sttMode === "none" && S.results.length && S.feedback === null) return void runFeedback().finally(() => S.phase === "result" && render());
   if (S.facts !== null || S.sttMode === "none" || S.results.length === 0) return;
   if (S.results.some((_, i) => S.transcripts[i] === undefined)) return;
   const facts = extractFacts(S.input.resume);
@@ -339,7 +350,59 @@ function runFactCheck() {
   void checkFacts(facts, S.transcripts, { ask: jsonAsker(RECHECK_SCHEMA, 80) })
     .then((r) => (S.facts = { ...r, ms: performance.now() - t0 }))
     .catch(() => (S.facts = { rows: [], mode: "fallback", ms: 0 }))
+    .then(runAnswerComp) // AI를 한 번에 하나씩 쓰도록 차례로
+    .then(runFeedback)
     .finally(() => S.phase === "result" && render());
+}
+
+async function runAnswerComp() {
+  if (!S.prep?.coverage.length) return;
+  S.answerComp = "running";
+  if (S.phase === "result") render();
+  try {
+    S.answerComp = await answerCompetency(S.prep.coverage, S.transcripts, jsonAsker(JUDGE_SCHEMA, 60));
+  } catch {
+    S.answerComp = { rows: [], judgments: [] };
+  }
+}
+
+async function runFeedback() {
+  S.feedback = "running";
+  if (S.phase === "result") render();
+  const counts = new Map<string, number>();
+  S.results.forEach((r) => r.alerts.forEach((a) => counts.set(a.label, (counts.get(a.label) ?? 0) + a.count)));
+  const facts = typeof S.facts === "object" && S.facts ? S.facts.rows.filter((r) => !S.factOff.has(r.id)) : [];
+  const comps = typeof S.answerComp === "object" && S.answerComp ? S.answerComp.rows : [];
+  S.feedback = await makeFeedback(
+    {
+      alerts: [...counts].map(([label, count]) => ({ label, count, grade: grade(count) })),
+      facts: facts.map((f) => ({ kind: f.kind, text: f.text, verdict: f.verdict, said: f.said })),
+      comps: comps.map((c) => ({ name: c.name, verdict: c.verdict })),
+      issues: S.asked.filter((a) => a.kind === "follow" && a.reason).map((a) => ISSUE_LABELS[a.reason!]),
+    },
+    jsonAsker(FEEDBACK_SCHEMA, 220),
+  );
+}
+
+function feedbackHtml() {
+  const head = `<h2 style="margin-top:0">종합 피드백</h2>`;
+  if (S.feedback === null || S.feedback === "running") return `<div class="card-dark" style="margin-bottom:16px">${head}<div class="muted">받아쓰기와 대조가 끝나면 이 PC 안 AI가 써요…</div></div>`;
+  const f = S.feedback;
+  return `<div class="card-dark" style="margin-bottom:16px">${head}<p style="font-size:18px;line-height:1.6">${esc(f.text)}</p>
+    <p style="opacity:.75;font-size:14px">${f.by === "ai" ? `이 PC 안 AI가 규칙이 고른 사실만으로 씀 · ${(f.ms / 1000).toFixed(1)}초` : `규칙 문장 (${esc(f.note)})`}</p></div>`;
+}
+
+const ANSWER_VERDICT_CLASS: Record<string, string> = { "둘 다": "ok", 자소서만: "warn", 답변만: "ok", "둘 다 없음": "bad" };
+function answerCompHtml() {
+  const head = `<h2>필요역량 ↔ 답변</h2>`;
+  if (!S.prep?.coverage.length) return "";
+  if (S.sttMode === "none") return `${head}<div class="muted">받아쓰기가 안 돼서 볼 수 없어요.</div>`;
+  if (S.answerComp === null || S.answerComp === "running") return `${head}<div class="muted">답변에서 역량을 찾는 중… (이 PC 안에서)</div>`;
+  const rows = S.answerComp.rows;
+  return `${head}<table><tr><th>필요역량</th><th>판정</th><th>답변 근거</th></tr>
+    ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td><span class="grade ${ANSWER_VERDICT_CLASS[r.verdict]}">${r.verdict}</span></td><td>${r.inAnswer ? `${r.via !== "단어" ? `<span class="badge">${r.via}</span> ` : ""}질문 ${r.q + 1}: “${esc(r.evidence)}”` : "<span class='muted'>답변에서 못 찾음</span>"}</td></tr>`).join("")}
+    </table>
+    <p style="opacity:.75;font-size:14px">'자소서만'은 자소서엔 근거가 있는데 답변에서는 그 역량이 드러나지 않은 것이에요. 자소서와 같은 규칙(단어, 문맥, 애매한 문장 AI 판정)으로 찾아요.</p>`;
 }
 
 function factsHtml() {
@@ -462,7 +525,7 @@ function coverageHtml() {
     <table><tr><th>필요역량</th><th>공고 근거</th><th>자소서에서 찾은 단어</th></tr>
     ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? `${c.via && c.via !== "단어" ? `<span class="badge">${c.via}</span> ` : ""}${esc(c.found.join(", "))}${c.via !== "단어" && c.evidence ? `<div class="fact-src">${esc(c.evidence)}</div>` : ""}` : "<span style='color:var(--magenta)'>근거 없음</span>"}</td></tr>`).join("")}
     </table>
-    <p style="opacity:.75;font-size:14px">정리: ${p.requiredBy === "gemini" ? "Gemini + 규칙" : "규칙 사전(NCS 직업기초능력)"} · 질문: ${p.questionsBy === "ai" ? "브라우저 안 AI" : "규칙"}. 답변과의 비교는 다음 단계에서 붙어요.</p>
+    <p style="opacity:.75;font-size:14px">정리: ${p.requiredBy === "gemini" ? "Gemini + 규칙" : "규칙 사전(NCS 직업기초능력)"} · 질문: ${p.questionsBy === "ai" ? "브라우저 안 AI" : "규칙"}. 답변과의 비교는 아래 '필요역량 ↔ 답변'에 있어요.</p>
   </div>`;
 }
 
@@ -523,7 +586,7 @@ function bindPage() {
     }),
   );
   $("#download")?.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })), competency: S.prep && { requiredBy: S.prep.requiredBy, coverage: S.prep.coverage, semantic: S.prep.semantic, judgments: S.prep.judgments, model: currentModel(), timings: S.prep.timings }, factCheck: typeof S.facts === "object" && S.facts ? { mode: S.facts.mode, rows: S.facts.rows.map((f) => ({ ...f, used: !S.factOff.has(f.id) })) } : null }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })), competency: S.prep && { requiredBy: S.prep.requiredBy, coverage: S.prep.coverage, semantic: S.prep.semantic, judgments: S.prep.judgments, model: currentModel(), timings: S.prep.timings }, answerCompetency: typeof S.answerComp === "object" ? S.answerComp : null, feedback: typeof S.feedback === "object" ? S.feedback : null, factCheck: typeof S.facts === "object" && S.facts ? { mode: S.facts.mode, rows: S.facts.rows.map((f) => ({ ...f, used: !S.factOff.has(f.id) })) } : null }, null, 2)], { type: "application/json" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `면접코치-${Date.now()}.json` });
     a.click();
   });

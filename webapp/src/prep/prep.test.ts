@@ -132,3 +132,19 @@ describe("문맥 규칙: 명사만으로는 역량 인정 안 함 (2026-10-19)",
     expect(ids("그 결과 다른 팀과 함께 일하게 되었습니다.")).not.toContain("self");
   });
 });
+
+describe("NCS 하위능력 문맥 규칙 (2026-10-23)", () => {
+  const ids = (t: string) => findCompetencies(t, true).map((h) => h.id);
+  it("갈등관리: 의견이 부딪혔지만 맞춤", () => {
+    expect(ids("팀원과 의견이 자주 부딪혔지만 자료로 돌아가 이야기하며 방향을 맞췄습니다.")).toContain("interpersonal");
+  });
+  it("인적자원관리: 근무표를 짬", () => {
+    expect(ids("봉사자 12명의 근무표를 짜는 일을 맡았습니다.")).toContain("resource");
+  });
+  it("기초연산: 매출과 현금을 맞춤", () => {
+    expect(ids("하루 매출과 현금이 맞지 않는 날을 정산하며 찾았습니다.")).toContain("math");
+  });
+  it("단어만 있으면 여전히 인정 안 함", () => {
+    expect(ids("저는 근무표라는 말을 좋아합니다.")).not.toContain("resource");
+  });
+});

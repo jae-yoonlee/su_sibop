@@ -3,7 +3,10 @@
 import "../styles.css";
 import "./eval.css";
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
-import { createEngine, generateQuestions } from "../prep/llm";
+import { createEngine, currentModel, generateQuestions, jsonAsker, preloadLlm } from "../prep/llm";
+import { judgeIds, JUDGE_SCHEMA, type Judgment } from "../prep/judge";
+import { COMPETENCIES } from "../prep/competency";
+const COMPETENCY_IDS = COMPETENCIES.map((c) => c.id);
 import { AI_DEADLINE_SEC } from "../prep/pipeline";
 import { findAll } from "../prep/semantic";
 import { embedError } from "../report/embed";
@@ -40,6 +43,7 @@ const S = {
   loadMs: {} as Record<string, number>,
   errors: {} as Record<string, string>,
   sem: null as null | "running" | { found: Map<string, string[]>; mode: "model" | "fallback"; ms: number }, // 뜻 비교 포함 결과
+  judge: null as null | string | { found: Map<string, string[]>; judgments: (Judgment & { caseId: string })[]; model: string; ms: number }, // AI 판정 포함 결과 (문자열 = 진행 상황)
   scored: null as ReturnType<typeof scoreSheets> | null,
   scoreErr: "",
 };
@@ -62,6 +66,8 @@ function methodsHtml() {
     ["단어 사전만 (예전)", byWords, undefined],
     ["단어 + 문맥 규칙 (지금 앱)", byContext, undefined],
   ];
+  const judge = typeof S.judge === "object" && S.judge ? S.judge : null;
+  if (judge) rows.push([`단어 + 문맥 + AI 판정 (${judge.model})`, byContext, judge.found]);
   if (sem) rows.push([`단어 + 문맥 + 뜻 비교 (${sem.mode === "model" ? "의미 모델" : "모델 못 받음 → 문맥까지만"})`, byContext, sem.found]);
   const cell = (cs: typeof dev, f: (typeof rows)[0][1], m?: Map<string, string[]>) => {
     const r = competencyEval(cs, f, m);
@@ -73,6 +79,7 @@ function methodsHtml() {
     <table><thead><tr><th>방식</th><th>본 절반 정확도</th><th>본 절반 재현율</th><th>안 본 절반 정확도</th><th>안 본 절반 재현율</th></tr></thead><tbody>
     ${rows.map(([name, f, m]) => `<tr><td>${name}</td>${cell(dev, f, m)}${cell(test, f, m)}</tr>`).join("")}
     </tbody></table>
+    ${judge ? `<p class="muted">AI 판정 ${judge.judgments.length}문장, ${sec(judge.ms)} <button class="btn-primary" id="dljudge">AI 판정 원본 JSON</button></p>` : `<button class="btn-green" id="judgerun" ${typeof S.judge === "string" ? "disabled" : ""}>${typeof S.judge === "string" ? esc(S.judge) : "애매한 문장 AI 판정까지 측정"}</button> `}
     ${sem ? `<p class="muted">뜻 비교 ${sec(sem.ms)}${sem.mode === "fallback" ? ` · 모델 오류: ${esc(embedError || "알 수 없음")}` : ""}</p>` : `<button class="btn-green" id="semrun" ${S.sem === "running" ? "disabled" : ""}>${S.sem === "running" ? "뜻 비교 중… (처음엔 모델 약 150MB 받음)" : "뜻 비교까지 측정"}</button>`}`;
 }
 
@@ -88,6 +95,32 @@ async function runSemantic() {
     if (r.mode === "fallback") mode = "fallback";
   }
   S.sem = { found, mode, ms: performance.now() - t0 };
+  render();
+}
+
+/** 규칙이 약하게만 잡은 문장을 PC 안 AI에게 물어, yes면 그 역량을 찾은 것으로 친다 (앱과 같은 모델, 같은 질문) */
+async function runJudge() {
+  S.judge = "AI 불러오는 중…";
+  render();
+  const engine = await preloadLlm();
+  const ask = engine && jsonAsker(JUDGE_SCHEMA, 60);
+  if (!ask) {
+    S.judge = null;
+    alert("이 PC에서는 AI를 쓸 수 없어요 (WebGPU 필요)");
+    return render();
+  }
+  const t0 = performance.now();
+  const found = new Map<string, string[]>();
+  const judgments: (Judgment & { caseId: string })[] = [];
+  for (const [i, c] of S.ds!.cases.entries()) {
+    S.judge = `AI 판정 중… ${i + 1}/${S.ds!.cases.length}`;
+    render();
+    const ids = byContext(c.resume);
+    const js = await judgeIds(COMPETENCY_IDS.filter((id) => !ids.includes(id)), c.resume, ask, 10);
+    judgments.push(...js.map((j) => ({ ...j, caseId: c.id })));
+    found.set(c.id, [...ids, ...new Set(js.filter((j) => j.yes).map((j) => j.id))]);
+  }
+  S.judge = { found, judgments, model: currentModel(), ms: performance.now() - t0 };
   render();
 }
 
@@ -197,6 +230,12 @@ function bind() {
   $("nRun")?.addEventListener("change", (e) => (S.runsPer = Number((e.target as HTMLSelectElement).value)));
   $("start")?.addEventListener("click", () => void runAll());
   $("semrun")?.addEventListener("click", () => void runSemantic());
+  $("judgerun")?.addEventListener("click", () => void runJudge());
+  $("dljudge")?.addEventListener("click", () => {
+    const j = S.judge as Exclude<typeof S.judge, string | null>;
+    const label = new Map(S.ds!.cases.map((c) => [c.id, c.labels]));
+    download(`AI판정_${stamp()}.json`, JSON.stringify({ model: j.model, ms: Math.round(j.ms), judgments: j.judgments.map((x) => ({ ...x, gold: label.get(x.caseId)?.includes(x.id) ?? null })) }, null, 2), "application/json");
+  });
 
   $("dlcomp")?.addEventListener("click", () => {
     const c = competencyEval(S.ds!.cases);

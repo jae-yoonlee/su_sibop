@@ -16,7 +16,7 @@ import { SileroGate, VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
 import { GEMINI_MODEL } from "./prep/gemini";
 import { checkFacts, extractFacts, RECHECK_SCHEMA, type FactResult } from "./report/facts";
 import { preloadEmbedder } from "./report/embed";
-import { followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
+import { currentModel, followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
 import { FOLLOWUP_TARGET_SEC, ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
 import { runPrep, type PrepState, type StepState } from "./prep/pipeline";
 
@@ -523,7 +523,7 @@ function bindPage() {
     }),
   );
   $("#download")?.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })), factCheck: typeof S.facts === "object" && S.facts ? { mode: S.facts.mode, rows: S.facts.rows.map((f) => ({ ...f, used: !S.factOff.has(f.id) })) } : null }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })), competency: S.prep && { requiredBy: S.prep.requiredBy, coverage: S.prep.coverage, semantic: S.prep.semantic, judgments: S.prep.judgments, model: currentModel(), timings: S.prep.timings }, factCheck: typeof S.facts === "object" && S.facts ? { mode: S.facts.mode, rows: S.facts.rows.map((f) => ({ ...f, used: !S.factOff.has(f.id) })) } : null }, null, 2)], { type: "application/json" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `면접코치-${Date.now()}.json` });
     a.click();
   });

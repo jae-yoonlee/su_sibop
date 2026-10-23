@@ -58,9 +58,9 @@ export function sttMode(): Promise<SttMode> {
 }
 
 export const STT_MODE_TEXT: Record<SttMode, string> = {
-  none: "이 브라우저는 받아쓰기를 지원하지 않아요 (Chrome·Edge 필요)",
-  local: "받아쓰기: 이 PC 안에서 처리",
-  cloud: "받아쓰기: 음성이 브라우저 회사(Google 등) 서버로 전송돼 글자로 바뀌어요",
+  none: "이 브라우저에서는 받아쓰기가 안 돼요. Chrome이나 Edge로 열어 주세요",
+  local: "받아쓰기도 이 컴퓨터 안에서 해요",
+  cloud: "받아쓰기만 Google 서버를 거쳐요",
 };
 
 /** 말하는 동안 계속 받아쓴다. Chrome은 잠깐 조용하면 저절로 멈추므로 다시 켠다. */

@@ -31,7 +31,7 @@ describe("종합 피드백", () => {
   const input = {
     alerts: [{ label: "정면을 봐 주세요", count: 5, grade: "bad" as const }],
     facts: [{ kind: "숫자", text: "12%", verdict: "불일치", said: "20%" }, { kind: "기간", text: "6개월", verdict: "일치", said: "" }],
-    comps: [{ name: "대인관계·협업", verdict: "자소서만" }, { name: "문제해결", verdict: "둘 다" }],
+    comps: [{ name: "대인관계와 협업", verdict: "자소서만" }, { name: "문제해결", verdict: "둘 다" }],
     issues: ["결과를 말하지 않음"],
   };
   it("규칙이 사실을 고른다", () => {

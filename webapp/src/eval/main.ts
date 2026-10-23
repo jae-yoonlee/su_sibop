@@ -17,11 +17,11 @@ import {
 
 // 비교 후보. 크기는 WebLLM 설정의 그래픽 메모리 요구량(16비트 연산 지원 기준).
 const MODELS = [
-  { base: "Qwen3-0.6B", note: "약 1.4GB · 가장 가벼움" },
-  { base: "Qwen3-1.7B", note: "약 2.0GB · 지금 앱 기본값" },
-  { base: "Qwen3.5-0.8B", note: "약 1.6GB · 새 세대 소형" },
-  { base: "Qwen3.5-2B", note: "약 2.2GB · 지금 기본값의 유력 대체" },
-  { base: "Qwen3-4B", note: "약 3.4GB · 품질 상한 확인용" },
+  { base: "Qwen3-0.6B", note: "약 1.4GB, 가장 가벼움" },
+  { base: "Qwen3-1.7B", note: "약 2.0GB, 지금 앱 기본값" },
+  { base: "Qwen3.5-0.8B", note: "약 1.6GB, 새 세대 소형" },
+  { base: "Qwen3.5-2B", note: "약 2.2GB, 지금 기본값의 유력 대체" },
+  { base: "Qwen3-4B", note: "약 3.4GB, 품질 상한 확인용" },
 ];
 
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -75,12 +75,12 @@ function methodsHtml() {
   };
   return `
     <h3>찾는 방식별 비교</h3>
-    <p class="muted">문맥 규칙은 1·3·5…번째 자소서만 보고 만들었습니다. 그래서 <b>2·4·6…번째(안 본 절반)</b> 점수가 실제 실력에 가깝습니다. 두 쪽 차이가 크면 규칙이 본 자료에만 맞춰진 것입니다.</p>
+    <p class="muted">문맥 규칙은 1, 3, 5…번째 자소서만 보고 만들었습니다. 그래서 <b>2, 4, 6…번째(안 본 절반)</b> 점수가 실제 실력에 가깝습니다. 두 쪽 차이가 크면 규칙이 본 자료에만 맞춰진 것입니다.</p>
     <table><thead><tr><th>방식</th><th>본 절반 정확도</th><th>본 절반 재현율</th><th>안 본 절반 정확도</th><th>안 본 절반 재현율</th></tr></thead><tbody>
     ${rows.map(([name, f, m]) => `<tr><td>${name}</td>${cell(dev, f, m)}${cell(test, f, m)}</tr>`).join("")}
     </tbody></table>
     ${judge ? `<p class="muted">AI 판정 ${judge.judgments.length}문장, ${sec(judge.ms)} <button class="btn-primary" id="dljudge">AI 판정 원본 JSON</button></p>` : `<button class="btn-green" id="judgerun" ${typeof S.judge === "string" ? "disabled" : ""}>${typeof S.judge === "string" ? esc(S.judge) : "애매한 문장 AI 판정까지 측정"}</button> `}
-    ${sem ? `<p class="muted">뜻 비교 ${sec(sem.ms)}${sem.mode === "fallback" ? ` · 모델 오류: ${esc(embedError || "알 수 없음")}` : ""}</p>` : `<button class="btn-green" id="semrun" ${S.sem === "running" ? "disabled" : ""}>${S.sem === "running" ? "뜻 비교 중… (처음엔 모델 약 150MB 받음)" : "뜻 비교까지 측정"}</button>`}`;
+    ${sem ? `<p class="muted">뜻 비교 ${sec(sem.ms)}${sem.mode === "fallback" ? `, 모델 오류: ${esc(embedError || "알 수 없음")}` : ""}</p>` : `<button class="btn-green" id="semrun" ${S.sem === "running" ? "disabled" : ""}>${S.sem === "running" ? "뜻 비교 중… (처음엔 모델 약 150MB 받음)" : "뜻 비교까지 측정"}</button>`}`;
 }
 
 async function runSemantic() {
@@ -134,25 +134,25 @@ function render() {
   app.innerHTML = `
   <div class="page"><div class="wrap ev">
     <div class="nav"><div class="brand">면접 코치 <b>검증</b></div><a class="link" href="./">앱으로</a></div>
-    <h1 class="display-md">모델·규칙 검증</h1>
+    <h1 class="display-md">모델과 규칙 검증</h1>
     <p class="lead">팀 내부용입니다. 가짜 자소서로 ① 역량 찾기 규칙 ② 질문 모델을 측정하고, 결과를 표 파일로 내려받습니다.</p>
 
     <section class="card-dark">
       <h2>이 PC</h2>
       <p>${esc(S.device.text)}</p>
-      <p class="muted">자료: ${esc(S.dsName)} · 자소서 ${ds?.cases.length ?? 0}개, 채용공고 ${ds?.postings.length ?? 0}개
+      <p class="muted">자료: ${esc(S.dsName)}, 자소서 ${ds?.cases.length ?? 0}개, 채용공고 ${ds?.postings.length ?? 0}개
         <label class="filebtn">다른 자료 불러오기<input type="file" id="dsfile" accept=".json" hidden /></label></p>
     </section>
 
     <section class="card-dark">
       <h2>① 역량 찾기 규칙 (AI 없음, 바로 계산)</h2>
       ${comp ? `
-      <p>자소서에서 찾은 역량이 정답 라벨과 얼마나 맞는지: <b>정확도(찾은 것 중 맞은 비율) ${pct(comp.precision)}</b> · <b>재현율(있어야 할 것 중 찾은 비율) ${pct(comp.recall)}</b></p>
+      <p>자소서에서 찾은 역량이 정답 라벨과 얼마나 맞는지: <b>정확도(찾은 것 중 맞은 비율) ${pct(comp.precision)}</b>, <b>재현율(있어야 할 것 중 찾은 비율) ${pct(comp.recall)}</b></p>
       <p class="muted">정답 라벨은 자료를 만든 사람이 붙인 1차 값입니다. 다른 사람이 따로 라벨을 붙여 비교하기 전까지는 참고용입니다.</p>
       <table><thead><tr><th>역량</th><th>맞음</th><th>잘못 찾음</th><th>놓침</th><th>정확도</th><th>재현율</th></tr></thead><tbody>
       ${comp.scores.map((s) => `<tr><td>${s.name}</td><td>${s.tp}</td><td>${s.fp}</td><td>${s.fn}</td><td>${pct(s.precision)}</td><td>${pct(s.recall)}</td></tr>`).join("")}
       </tbody></table>
-      <details><summary>자소서별로 놓친 것·잘못 찾은 것</summary>
+      <details><summary>자소서별로 놓친 것과 잘못 찾은 것</summary>
       <table><tbody>${comp.rows.filter((r) => r.missed.length || r.extra.length).map((r) => `<tr><td>${r.id}</td><td>놓침: ${r.missed.join(", ") || "-"}</td><td>잘못 찾음: ${r.extra.join(", ") || "-"}</td></tr>`).join("")}</tbody></table>
       </details>
       <button class="btn-primary" id="dlcomp">역량 결과 CSV</button>
@@ -166,7 +166,7 @@ function render() {
         ${MODELS.map((m) => {
           const ok = S.device.gpu === "ok" && S.available.has(modelId(m.base));
           return `<label class="model ${ok ? "" : "off"}"><input type="checkbox" data-m="${m.base}" ${S.pick.has(m.base) && ok ? "checked" : ""} ${ok && !S.running ? "" : "disabled"} />
-            <b>${m.base}</b><span>${m.note}${ok ? "" : " · 이 PC에선 불가"}</span></label>`;
+            <b>${m.base}</b><span>${m.note}${ok ? "" : ", 이 PC에선 불가"}</span></label>`;
         }).join("")}
       </div>
       <div class="opts">
@@ -215,7 +215,7 @@ function bind() {
     if (!f) return;
     try {
       const d = JSON.parse(await f.text()) as Dataset;
-      if (!Array.isArray(d.cases) || !Array.isArray(d.postings)) throw new Error("cases·postings 목록이 없어요");
+      if (!Array.isArray(d.cases) || !Array.isArray(d.postings)) throw new Error("cases, postings 목록이 없어요");
       S.ds = d;
       S.sem = null;
       S.dsName = f.name;
@@ -328,7 +328,7 @@ async function runAll() {
           const ms = performance.now() - t;
           const sc = scoreAiAnswer(raw, c.resume, fallback);
           S.runs.push({ caseId: c.id, model: id, run, ms, raw, ...sc });
-          say(`${id} · ${c.id} #${run}: ${sec(ms)}, AI 질문 ${sc.aiCount}/3`);
+          say(`${id}, ${c.id} #${run}: ${sec(ms)}, AI 질문 ${sc.aiCount}/3`);
         }
       }
     } catch (e) {
@@ -359,7 +359,7 @@ async function init() {
     `CPU 스레드 ${navigator.hardwareConcurrency ?? "?"}`,
     nav.deviceMemory ? `메모리 약 ${nav.deviceMemory}GB 이상` : "",
     navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/)?.[0] ?? "",
-  ].filter(Boolean).join(" · ");
+  ].filter(Boolean).join(", ");
   try {
     const { prebuiltAppConfig } = await import("@mlc-ai/web-llm");
     S.available = new Set(prebuiltAppConfig.model_list.map((m) => m.model_id));

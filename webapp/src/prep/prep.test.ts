@@ -32,8 +32,8 @@ describe("역량 규칙", () => {
 
   it("자소서 대조: 협업·책임감(맡았·담당)은 근거 있음, 의사소통은 근거 없음", () => {
     const cov = checkResume(requiredFromRules(POSTING), RESUME);
-    expect(cov.find((c) => c.name === "대인관계·협업")!.found).toContain("협업");
-    expect(cov.find((c) => c.name === "직업윤리·책임감")!.found).toContain("담당");
+    expect(cov.find((c) => c.name === "대인관계와 협업")!.found).toContain("협업");
+    expect(cov.find((c) => c.name === "직업윤리와 책임감")!.found).toContain("담당");
     expect(cov.find((c) => c.name === "의사소통")!.found).toEqual([]);
   });
 });

@@ -13,14 +13,13 @@ import { STATUS_ALERTS } from "./rules/gate";
 import { ALERT_LABELS, AnswerCoach, type AnswerStats } from "./rules/session";
 import { toDb } from "./rules/stats";
 import { SileroGate, VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
-import { GEMINI_MODEL } from "./prep/gemini";
 import { checkFacts, extractFacts, RECHECK_SCHEMA, type FactResult } from "./report/facts";
 import { answerCompetency } from "./report/answerComp";
 import { FEEDBACK_SCHEMA, makeFeedback, type Feedback } from "./report/feedback";
 import { JUDGE_SCHEMA } from "./prep/judge";
 import { preloadEmbedder } from "./report/embed";
 import { currentModel, followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
-import { FOLLOWUP_TARGET_SEC, ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
+import { ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
 import { runPrep, type PrepState, type StepState } from "./prep/pipeline";
 
 // 2라운드 × (본질문 → 꼬리질문) = 4문항. AI가 만든 본질문 3개 중 앞의 2개를 쓰고 1개는 예비.
@@ -110,7 +109,7 @@ function resetRun() {
 
 type Grade = "ok" | "warn" | "bad";
 const grade = (n: number): Grade => (n >= PROBLEM_COUNT ? "bad" : n >= WARN_COUNT ? "warn" : "ok");
-const GRADE_TEXT: Record<Grade, string> = { ok: "정상", warn: "주의", bad: "문제" };
+const GRADE_TEXT: Record<Grade, string> = { ok: "좋음", warn: "주의", bad: "고칠 점" };
 
 const now = () => performance.now() / 1000;
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => app.querySelector<T>(sel);
@@ -136,8 +135,8 @@ function render() {
 function llmChip(st: LlmState) {
   if (st.kind === "loading") return `AI 준비 중 ${Math.round(st.progress * 100)}%`;
   if (st.kind === "ready") return "AI 준비 완료";
-  if (st.kind === "unsupported") return "이 PC는 AI 대신 규칙 질문";
-  if (st.kind === "error") return "AI를 못 불러와 규칙 질문";
+  if (st.kind === "unsupported") return "기본 질문으로 진행해요";
+  if (st.kind === "error") return "기본 질문으로 진행해요";
   return "AI 확인 중";
 }
 
@@ -149,33 +148,33 @@ function introHtml() {
     <nav class="nav"><div class="brand">면접<b>.</b>코치</div><span class="chip" id="llm-chip">${llmChip(llmState)}</span></nav>
     <div class="wrap">
       <h1 class="display-xl">면접,<br/>실전처럼.</h1>
-      <p class="lead">지원할 회사의 채용공고와 내 자소서를 넣으면, 회사가 원하는 역량을 정리하고 질문을 만들어요. 그동안 카메라와 목소리를 맞추고 바로 연습해요.</p>
+      <p class="lead">채용공고와 자소서를 넣으면 그 회사에 맞는 질문으로 실제 면접처럼 연습할 수 있어요.</p>
       <div class="inputs">
         <label class="field"><span class="field-h">희망 회사 채용공고</span>
-          <span class="field-sub">채용 설명에 적힌 자격요건·우대사항·인재상을 그대로 붙여 넣어 주세요</span>
+          <span class="field-sub">자격요건, 우대사항, 인재상을 그대로 붙여 넣어 주세요</span>
           <textarea id="posting" rows="12" placeholder="예) 다양한 부서와 원활하게 협업하며 데이터를 바탕으로 문제를 해결할 분을 찾습니다.">${esc(i.posting)}</textarea></label>
         <label class="field"><span class="field-h">내 자기소개서</span>
-          <span class="field-sub">이 PC 밖으로 보내지 않아요</span>
+          <span class="field-sub">이 컴퓨터 밖으로 나가지 않아요</span>
           <textarea id="resume" rows="12" placeholder="자기소개서 전체를 붙여 넣어 주세요">${esc(i.resume)}</textarea></label>
       </div>
       <details class="keybox" ${i.geminiKey ? "" : "open"}><summary>Gemini 키 (선택)</summary>
-        <p>넣으면 채용공고를 Gemini(${GEMINI_MODEL})로 보내 필요역량을 더 정확히 정리해요. 키는 이 브라우저에만 저장돼요.
+        <p>넣으면 필요한 역량을 더 정확하게 정리해요. 채용공고만 보내고, 키는 이 브라우저에만 저장돼요.
         <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">무료 키 받기</a></p>
         <input id="gkey" type="password" autocomplete="off" placeholder="AIza…" value="${esc(i.geminiKey)}" />
       </details>
       <div class="chips">
-        <span class="badge">채용공고만 Gemini로 전송 · 자소서·영상은 이 PC 안에서만</span>
+        <span class="badge">자소서와 영상은 이 컴퓨터 안에서만 써요</span>
         <span class="chip" id="stt-chip">${STT_MODE_TEXT[S.sttMode]}</span>
-        <span class="chip">Chrome · Edge 권장</span>
-        <span class="chip">컴퓨터 소리는 꺼 두기</span>
+        <span class="chip">Chrome, Edge 권장</span>
+        <span class="chip">스피커 소리는 꺼 주세요</span>
       </div>
-      <button class="btn-green" id="go">분석 시작</button>
+      <button class="btn-green" id="go">시작하기</button>
       ${S.error ? `<div class="err">${S.error}</div>` : ""}
       <div class="steps">
-        ${step(1, "역량 정리", "채용공고에서 필요역량을 뽑고, 자소서에 근거가 있는지 확인해요")}
-        ${step(2, "질문 준비 + 자리 맞추기", "AI가 질문 3개를 만드는 동안 카메라와 목소리 기준을 맞춰요")}
-        ${step(3, `질문 ${TOTAL}개`, `질문을 ${QUESTION_SEC}초 보고 ${ANSWER_SEC}초 답해요. 답이 끝나면 내 답변을 보고 꼬리질문이 이어져요`)}
-        ${step(4, "결과", "역량 일치와 경고를 정리해요")}
+        ${step(1, "역량 정리", "채용공고에서 필요한 역량을 뽑고 자소서와 맞춰 봐요")}
+        ${step(2, "자리 맞추기", "질문을 만드는 동안 카메라와 목소리를 맞춰요")}
+        ${step(3, `질문 ${TOTAL}개`, `${QUESTION_SEC}초 생각하고 ${ANSWER_SEC}초 답해요. 답이 끝나면 꼬리질문이 이어져요`)}
+        ${step(4, "결과", "잘한 점과 고칠 점을 정리해 드려요")}
       </div>
     </div>
   </div>`;
@@ -202,16 +201,16 @@ function sttCheckHtml() {
   if (!c) return "";
   const tone = c.acc >= 85 ? "ok" : c.acc >= 60 ? "mid" : "bad";
   return `<div class="stt-check ${tone}"><b>받아쓰기 확인 ${c.acc}%</b>
-    <span>들린 문장: “${esc(c.text || "(아무것도 못 알아들음)")}”</span>
-    ${c.error ? `<span>받아쓰기 오류: ${esc(c.error === "network" ? "인터넷 연결 문제로 받아쓰기 서버에 닿지 못함" : c.error === "not-allowed" ? "마이크 권한이 막힘" : c.error)}</span>` : ""}
-    <span>${c.acc >= 85 ? "잘 받아쓰고 있어요" : "정확도가 낮아요. 마이크를 가까이 하고 또박또박 다시 읽어 보세요"} · ${STT_MODE_TEXT[S.sttMode]}</span>
+    <span>들린 문장: “${esc(c.text || "알아듣지 못했어요")}”</span>
+    ${c.error ? `<span>받아쓰기 오류: ${esc(c.error === "network" ? "인터넷 연결이 불안정해요" : c.error === "not-allowed" ? "마이크 권한이 꺼져 있어요" : c.error)}</span>` : ""}
+    <span>${c.acc >= 85 ? "잘 알아듣고 있어요" : "잘 못 알아들었어요. 마이크 가까이에서 또박또박 다시 읽어 보세요"}</span>
     <button class="btn-ghost-sm" id="reread">문장 다시 읽기</button></div>`;
 }
 
 function overlayHtml() {
   const meter = `<div class="meter"><i></i><b></b></div><div class="vad-mode" id="vad-mode">${vadLabel()}</div><div class="debug" ${S.debug ? "" : "hidden"}></div>`;
   if (S.phase === "loading") {
-    return `<div class="setup-card"><div class="msg">얼굴 분석 모델을 불러오는 중…</div><div>처음 한 번만 몇 초 걸려요</div></div>`;
+    return `<div class="setup-card"><div class="msg">카메라를 준비하고 있어요</div><div>처음에만 몇 초 걸려요</div></div>`;
   }
   if (S.phase === "setup") {
     const cur = setupStepKey();
@@ -234,17 +233,16 @@ function overlayHtml() {
   if (S.phase === "ready") {
     const warns = S.cam.warnings.map((w) => `<div>${SETUP_MESSAGES[w]}</div>`).join("");
     if (!questionsReady())
-      return `<div class="setup-card"><div class="msg">세팅 완료! AI가 자소서로 질문을 쓰고 있어요</div>
-        <div>자소서는 이 PC 안의 AI만 읽어요. 처음 방문이면 AI를 받느라 더 걸려요</div></div>${prepCard()}${meter}`;
+      return `<div class="setup-card"><div class="msg">준비 끝! 질문을 만들고 있어요</div>
+        <div>처음이라면 조금 더 걸릴 수 있어요</div></div>${prepCard()}${meter}`;
     return `<button class="start" id="start">시작</button><div class="warn-list">${warns}</div>${sttCheckHtml()}${meter}`;
   }
   if (S.phase === "followup")
     return `<div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length + 1} / ${TOTAL}</span><span class="badge follow">꼬리질문</span><span>준비 중</span></div>
-      <p class="q">방금 답변을 보고 이어서 물어볼게요…</p></div>
-      <div class="setup-card"><div>규칙이 답변에서 짚을 부분을 고르고, 이 PC 안의 AI가 질문을 써요 (목표 ${FOLLOWUP_TARGET_SEC}초)</div></div>${meter}`;
+      <p class="q">방금 답변을 듣고 이어서 물어볼게요…</p></div>${meter}`;
   // question / answer
   const q = esc(curQ());
-  const label = S.phase === "question" ? "질문을 읽고 생각해 보세요" : "답변 중";
+  const label = S.phase === "question" ? "생각하는 시간" : "답변 중";
   const follow = cur()?.kind === "follow" ? `<span class="badge follow">꼬리질문</span>` : "";
   return `
     <div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length} / ${TOTAL}</span>${follow}<span>${label}</span></div>
@@ -265,10 +263,10 @@ function prepCard() {
     `<div class="prep-row ${st}"><b>${STEP_ICON[st]}</b><span>${label}${note ? `<small>${esc(note)}</small>` : ""}</span></div>`;
   const ai = llmState.kind === "loading" && p.steps.questions === "run" ? ` (${Math.round(llmState.progress * 100)}%)` : "";
   return `<div class="prep-card" id="prep-card">
-    ${row(p.steps.rules, "채용공고 단어 찾기")}
-    ${row(p.steps.gemini, "필요역량 정리 (Gemini)", p.note.gemini ?? (p.steps.gemini === "skip" ? "키 없음 → 규칙으로 정리" : ""))}
-    ${row(p.steps.resume, "자소서와 대조 (단어·문맥·뜻)", p.note.resume ?? "")}
-    ${row(p.done ? (p.questionsBy === "ai" ? "done" : "fail") : p.steps.questions, `질문 3개 만들기${ai}`, p.note.questions ?? "")}
+    ${row(p.steps.rules, "채용공고 읽기")}
+    ${row(p.steps.gemini === "skip" ? "done" : p.steps.gemini, "필요한 역량 정리")}
+    ${row(p.steps.resume, "자소서와 맞춰 보기")}
+    ${row(p.done ? "done" : p.steps.questions, `질문 만들기${ai}`)}
   </div>`;
 }
 
@@ -304,18 +302,18 @@ function resultHtml() {
     <nav class="nav"><div class="brand">면접<b>.</b>코치</div><span class="badge">결과</span></nav>
     <h1 class="display-md">이번 연습 결과</h1>
     <div class="stats">
-      <div class="stat"><div class="v">${total}</div><div class="k">경고 기준에 걸린 횟수</div></div>
-      <div class="stat"><div class="v">${shown}</div><div class="k">화면에 띄운 알림</div></div>
+      <div class="stat"><div class="v">${total}</div><div class="k">경고 횟수</div></div>
+      <div class="stat"><div class="v">${shown}</div><div class="k">화면에 뜬 알림</div></div>
       <div class="stat"><div class="v" style="font-size:32px;line-height:1.2">${top}</div><div class="k">가장 많이 받은 경고</div></div>
     </div>
     ${feedbackHtml()}
     ${coverageHtml()}
     <div class="card-dark">
-      <h2 style="margin-top:0">경고별 누적</h2>
-      <table><tr><th>경고</th><th>판정</th><th>횟수</th><th>지속 시간</th><th>화면 알림</th></tr>
+      <h2 style="margin-top:0">경고 모아 보기</h2>
+      <table><tr><th>경고</th><th>상태</th><th>횟수</th><th>지속 시간</th><th>화면 알림</th></tr>
       ${rows.map((r) => `<tr><td>${r.label}</td><td><span class="grade ${grade(r.count)}">${GRADE_TEXT[grade(r.count)]}</span></td><td>${r.count}회</td><td>${r.seconds.toFixed(1)}초</td><td>${r.shown}회</td></tr>`).join("") || `<tr><td colspan="5">경고가 없었어요</td></tr>`}
       </table>
-      <p style="opacity:.75;font-size:14px">판정: 경고 종류별로 ${TOTAL}문항 전체에서 ${WARN_COUNT - 1}회까지 정상, ${WARN_COUNT}~${PROBLEM_COUNT - 1}회 주의, ${PROBLEM_COUNT}회 이상 문제. 알림은 답변을 방해하지 않게 20초에 하나, 1분에 2개까지만 띄우지만, 못 띄운 경고도 여기에는 모두 들어가요.</p>
+      <p class="muted">${TOTAL}문항을 합쳐 ${WARN_COUNT - 1}회까지 좋음, ${WARN_COUNT}~${PROBLEM_COUNT - 1}회 주의, ${PROBLEM_COUNT}회부터 고칠 점이에요. 답변 중에는 가끔만 알려 드렸지만 여기에는 전부 셌어요.</p>
       ${evidenceHtml()}
       ${factsHtml()}
       ${answerCompHtml()}
@@ -323,15 +321,15 @@ function resultHtml() {
       <table>${perQ}</table>
     </div>
     <div class="actions">
-      <button class="btn-primary" id="download">결과 저장 (JSON)</button>
+      <button class="btn-primary" id="download">결과 파일 받기</button>
       <button class="btn-green" id="again">다시 하기</button>
-      <button class="btn-ghost" id="new-input">자료 새로 넣기</button>
+      <button class="btn-ghost" id="new-input">다른 자소서로 하기</button>
     </div>
-    <details><summary>측정 정보 (테스트용)</summary><pre>${JSON.stringify(
+    ${S.debug ? "" : "<!--"}<details><summary>측정 정보</summary><pre>${JSON.stringify(
       { face: S.delegate, fps: Math.round(S.fps), mic: { autoGainControl: settings.autoGainControl, noiseSuppression: settings.noiseSuppression, sampleRate: settings.sampleRate },
         prep: S.prep && { timings: S.prep.timings, requiredBy: S.prep.requiredBy, questionsBy: S.prep.questionsBy, llm: llmState.kind, notes: S.prep.note },
         vad: { mode: S.vad?.mode, error: S.vad?.error, sileroShare: S.results.map((r) => r.vadShare) },
-        noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), stt: { mode: S.sttMode, check: S.sttCheck }, camera: S.cam.warnings, ua: navigator.userAgent }, null, 2)}</pre></details>
+        noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), stt: { mode: S.sttMode, check: S.sttCheck }, camera: S.cam.warnings, ua: navigator.userAgent }, null, 2)}</pre></details>${S.debug ? "" : "-->"}
   </div></div>`;
 }
 
@@ -386,46 +384,45 @@ async function runFeedback() {
 
 function feedbackHtml() {
   const head = `<h2 style="margin-top:0">종합 피드백</h2>`;
-  if (S.feedback === null || S.feedback === "running") return `<div class="card-dark" style="margin-bottom:16px">${head}<div class="muted">받아쓰기와 대조가 끝나면 이 PC 안 AI가 써요…</div></div>`;
+  if (S.feedback === null || S.feedback === "running") return `<div class="card-dark" style="margin-bottom:16px">${head}<div class="muted">답변을 정리하고 있어요…</div></div>`;
   const f = S.feedback;
-  return `<div class="card-dark" style="margin-bottom:16px">${head}<p style="font-size:18px;line-height:1.6">${esc(f.text)}</p>
-    <p style="opacity:.75;font-size:14px">${f.by === "ai" ? `이 PC 안 AI가 규칙이 고른 사실만으로 씀 · ${(f.ms / 1000).toFixed(1)}초` : `규칙 문장 (${esc(f.note)})`}</p></div>`;
+  return `<div class="card-dark" style="margin-bottom:16px">${head}<p class="feedback">${esc(f.text)}</p></div>`;
 }
 
 const ANSWER_VERDICT_CLASS: Record<string, string> = { "둘 다": "ok", 자소서만: "warn", 답변만: "ok", "둘 다 없음": "bad" };
 function answerCompHtml() {
-  const head = `<h2>필요역량 ↔ 답변</h2>`;
+  const head = `<h2>답변에서도 역량이 보였나요</h2>`;
   if (!S.prep?.coverage.length) return "";
-  if (S.sttMode === "none") return `${head}<div class="muted">받아쓰기가 안 돼서 볼 수 없어요.</div>`;
-  if (S.answerComp === null || S.answerComp === "running") return `${head}<div class="muted">답변에서 역량을 찾는 중… (이 PC 안에서)</div>`;
+  if (S.sttMode === "none") return `${head}<div class="muted">받아쓰기가 안 돼서 확인할 수 없어요.</div>`;
+  if (S.answerComp === null || S.answerComp === "running") return `${head}<div class="muted">답변에서 역량을 찾고 있어요…</div>`;
   const rows = S.answerComp.rows;
-  return `${head}<table><tr><th>필요역량</th><th>판정</th><th>답변 근거</th></tr>
-    ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td><span class="grade ${ANSWER_VERDICT_CLASS[r.verdict]}">${r.verdict}</span></td><td>${r.inAnswer ? `${r.via !== "단어" ? `<span class="badge">${r.via}</span> ` : ""}질문 ${r.q + 1}: “${esc(r.evidence)}”` : "<span class='muted'>답변에서 못 찾음</span>"}</td></tr>`).join("")}
+  return `${head}<table><tr><th>필요한 역량</th><th>결과</th><th>답변에서 찾은 말</th></tr>
+    ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td><span class="grade ${ANSWER_VERDICT_CLASS[r.verdict]}">${r.verdict}</span></td><td>${r.inAnswer ? `질문 ${r.q + 1}: “${esc(r.evidence)}”` : "<span class='muted'>찾지 못했어요</span>"}</td></tr>`).join("")}
     </table>
-    <p style="opacity:.75;font-size:14px">'자소서만'은 자소서엔 근거가 있는데 답변에서는 그 역량이 드러나지 않은 것이에요. 자소서와 같은 규칙(단어, 문맥, 애매한 문장 AI 판정)으로 찾아요.</p>`;
+    <p class="muted">'자소서만'은 자소서에는 썼지만 답변에서는 드러나지 않은 역량이에요.</p>`;
 }
 
 function factsHtml() {
-  const head = `<h2>자소서와 답변 사실 대조</h2>`;
-  if (S.sttMode === "none") return `${head}<div class="muted">받아쓰기가 안 돼서 대조할 수 없어요.</div>`;
-  if (S.facts === null || S.facts === "running") return `${head}<div class="muted">답변과 자소서를 비교하는 중… (이 PC 안에서)</div>`;
-  const { rows, mode, ms } = S.facts;
-  if (!rows.length) return `${head}<div class="muted">자소서에서 기간·숫자·역할·프로젝트명을 찾지 못했어요.</div>`;
+  const head = `<h2>자소서와 답변 맞춰 보기</h2>`;
+  if (S.sttMode === "none") return `${head}<div class="muted">받아쓰기가 안 돼서 맞춰 볼 수 없어요.</div>`;
+  if (S.facts === null || S.facts === "running") return `${head}<div class="muted">자소서와 답변을 맞춰 보고 있어요…</div>`;
+  const { rows } = S.facts;
+  if (!rows.length) return `${head}<div class="muted">자소서에서 기간, 숫자, 역할, 프로젝트 이름을 찾지 못했어요.</div>`;
   const used = rows.filter((r) => !S.factOff.has(r.id));
   const count = (v: string) => used.filter((r) => r.verdict === v).length;
   const tr = rows
     .map((r) => {
       const off = S.factOff.has(r.id);
-      return `<tr class="${off ? "off" : ""}"><td><input type="checkbox" data-fact="${r.id}" ${off ? "" : "checked"} aria-label="대조에 넣기"></td>
+      return `<tr class="${off ? "off" : ""}"><td><input type="checkbox" data-fact="${r.id}" ${off ? "" : "checked"} aria-label="이 항목 세기"></td>
         <td>${r.kind}</td><td><b>${esc(r.text)}</b><div class="fact-src">${esc(r.sentence)}</div></td>
         <td><span class="grade ${VERDICT_CLASS[r.verdict]}">${r.verdict}</span>${r.said ? `<div>답변: <b>${esc(r.said)}</b></div>` : ""}</td>
-        <td>${r.answerSentence ? `질문 ${r.q + 1}: “${esc(r.answerSentence)}”` : ""}<div class="fact-src">${esc(r.note)}</div></td></tr>`;
+        <td>${r.answerSentence ? `질문 ${r.q + 1}: “${esc(r.answerSentence)}”` : `<span class="muted">${esc(r.note)}</span>`}</td></tr>`;
     })
     .join("");
   return `${head}
-    <p class="facts-sum"><b>${count("일치")}</b> 일치 · <b>${count("불일치")}</b> 불일치 · <b>${count("말 안 함")}</b> 말 안 함 · <b>${count("확인 필요")}</b> 확인 필요 <span class="muted">(고른 ${used.length}개 기준)</span></p>
-    <table class="facts"><tr><th></th><th>종류</th><th>자소서</th><th>판정</th><th>답변 근거</th></tr>${tr}</table>
-    <p style="opacity:.75;font-size:14px">같은 경험을 말한 답변 문장은 ${mode === "model" ? "문장 의미 모델(이 PC 안)" : "글자 비교(의미 모델을 못 받아서 대신 씀)"}로 찾고, 숫자·역할은 규칙으로 맞춰 봐요. 불일치는 이 PC 안 AI가 같은 경험인지 한 번 더 봐요. 체크를 풀면 그 항목은 집계에서 빠져요. ${(ms / 1000).toFixed(1)}초</p>`;
+    <p class="facts-sum">일치 <b>${count("일치")}</b>, 불일치 <b>${count("불일치")}</b>, 말 안 함 <b>${count("말 안 함")}</b>, 확인 필요 <b>${count("확인 필요")}</b> <span class="muted">(체크한 ${used.length}개)</span></p>
+    <table class="facts"><tr><th></th><th>종류</th><th>자소서</th><th>결과</th><th>답변</th></tr>${tr}</table>
+    <p class="muted">체크를 풀면 그 항목은 빼고 세요.</p>`;
 }
 
 // ── 경고 장면 클립 (다시보기) ──
@@ -460,13 +457,13 @@ function evidenceHtml() {
   const worst = (names: string[]) => names.map((n) => grade(total.get(n) ?? 0)).sort((x, y) => "okwarnbad".indexOf(y) - "okwarnbad".indexOf(x))[0];
   const cards = clips
     .map((c, k) => `<button class="clip ${worst(c.names)}" data-k="${k}">
-      <span class="clip-q">질문 ${c.q + 1}${S.asked[c.q]?.kind === "follow" ? " · 꼬리" : ""} · ${mmss(c.from)}–${mmss(c.to)}</span>
-      <b>${c.names.map((n) => esc(ALERT_LABELS[n])).join(" · ")}</b>
+      <span class="clip-q">질문 ${c.q + 1}${S.asked[c.q]?.kind === "follow" ? " 꼬리질문" : ""}, ${mmss(c.from)}–${mmss(c.to)}</span>
+      <b>${c.names.map((n) => esc(ALERT_LABELS[n])).join(", ")}</b>
       <span class="grade ${worst(c.names)}">${GRADE_TEXT[worst(c.names)]}</span></button>`)
     .join("");
-  return `<h2>경고 장면 다시보기 <span class="badge">${clips.length}개 클립</span></h2>
-    <p style="opacity:.75;font-size:14px">경고 ${CLIP_LEAD_SEC}초 전부터 끝난 뒤 ${CLIP_TAIL_SEC}초까지 잘라 보여 줘요. 영상은 이 브라우저 메모리에만 있고 어디에도 보내지 않아요. 창을 닫으면 사라져요.</p>
-    <div class="replay"><div class="player"><video id="replay" playsinline controls></video><div class="now" id="replay-now">클립을 고르거나 '전체 이어보기'를 누르세요</div></div>
+  return `<h2>경고 장면 다시보기 <span class="badge">${clips.length}개</span></h2>
+    <p class="muted">경고가 뜨기 ${CLIP_LEAD_SEC}초 전부터 보여 줘요. 영상은 저장되지 않고 창을 닫으면 사라져요.</p>
+    <div class="replay"><div class="player"><video id="replay" playsinline controls></video><div class="now" id="replay-now">장면을 고르거나 '전체 이어보기'를 눌러 보세요</div></div>
     <div class="clips"><button class="btn-primary" id="play-all">▶ 전체 이어보기</button>${cards}</div></div>`;
 }
 
@@ -488,7 +485,7 @@ async function playClip(k: number) {
   v.dataset.to = String(c.to);
   app.querySelectorAll<HTMLElement>(".clip").forEach((el) => el.classList.toggle("on", el.dataset.k === String(k)));
   const now = $("#replay-now");
-  if (now) now.textContent = `질문 ${c.q + 1} · ${c.names.map((n) => ALERT_LABELS[n]).join(" · ")} (${mmss(c.from)}–${mmss(c.to)})`;
+  if (now) now.textContent = `질문 ${c.q + 1}, ${c.names.map((n) => ALERT_LABELS[n]).join(", ")} (${mmss(c.from)}–${mmss(c.to)})`;
   void v.play();
 }
 function bindReplay() {
@@ -521,20 +518,17 @@ function coverageHtml() {
   if (!p?.coverage.length) return "";
   const hit = p.coverage.filter((c) => c.found.length).length;
   return `<div class="card-dark" style="margin-bottom:16px">
-    <h2 style="margin-top:0">필요역량 ↔ 자소서 <span class="badge">${hit} / ${p.coverage.length} 근거 있음</span></h2>
-    <table><tr><th>필요역량</th><th>공고 근거</th><th>자소서에서 찾은 단어</th></tr>
-    ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? `${c.via && c.via !== "단어" ? `<span class="badge">${c.via}</span> ` : ""}${esc(c.found.join(", "))}${c.via !== "단어" && c.evidence ? `<div class="fact-src">${esc(c.evidence)}</div>` : ""}` : "<span style='color:var(--magenta)'>근거 없음</span>"}</td></tr>`).join("")}
+    <h2 style="margin-top:0">회사가 원하는 역량과 내 자소서 <span class="badge">${p.coverage.length}개 중 ${hit}개 있음</span></h2>
+    <table><tr><th>필요한 역량</th><th>채용공고에서</th><th>자소서에서</th></tr>
+    ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? `${esc(c.found.join(", "))}${c.via !== "단어" && c.evidence ? `<div class="fact-src">${esc(c.evidence)}</div>` : ""}` : "<span style='color:var(--magenta)'>안 보여요</span>"}</td></tr>`).join("")}
     </table>
-    <p style="opacity:.75;font-size:14px">정리: ${p.requiredBy === "gemini" ? "Gemini + 규칙" : "규칙 사전(NCS 직업기초능력)"} · 질문: ${p.questionsBy === "ai" ? "브라우저 안 AI" : "규칙"}. 답변과의 비교는 아래 '필요역량 ↔ 답변'에 있어요.</p>
   </div>`;
 }
 
 function askedNote(a?: Asked) {
   if (!a) return "";
-  if (a.kind === "main") return `<small>본질문 · ${a.source === "ai" ? "이 PC 안 AI" : "규칙"}${a.evidence ? ` · 근거: “${esc(a.evidence)}”` : ""}</small>`;
-  const why = `빈 곳: ${ISSUE_LABELS[a.reason!]}`;
-  const by = a.source === "ai" ? "이 PC 안 AI가 씀" : `정해진 문장 (${esc(a.error ?? "")})`;
-  return `<small>꼬리질문 · ${why} · ${by} · ${((a.ms ?? 0) / 1000).toFixed(1)}초</small>`;
+  if (a.kind === "main") return a.evidence ? `<small>자소서의 “${esc(a.evidence)}”에서 나온 질문</small>` : "";
+  return `<small>짚은 부분: ${ISSUE_LABELS[a.reason!]}</small>`;
 }
 
 // ── 이벤트 ─────────────────────────────────────────────
@@ -640,7 +634,7 @@ function startStt() {
   const hints = extractFacts(S.input.resume).filter((f) => f.kind !== "역할").map((f) => f.text);
   S.stt = new Transcriber(S.sttMode, (text) => {
     const live = $("#stt-live");
-    if (live) live.textContent = `받아쓰는 중 · ${text.length}자 · “${text.slice(-30)}”`;
+    if (live) live.textContent = `“${text.slice(-30)}”`;
   }, hints);
   S.stt.start();
 }
@@ -726,7 +720,7 @@ async function start() {
     (S.video?.srcObject as MediaStream | null)?.getTracks().forEach((t) => t.stop());
     const name = (e as Error).name;
     S.error =
-      name === "NotAllowedError" ? "카메라·마이크 권한이 막혀 있어요. 주소창 왼쪽 자물쇠에서 허용해 주세요."
+      name === "NotAllowedError" ? "카메라와 마이크 권한이 꺼져 있어요. 주소창 왼쪽 자물쇠 아이콘에서 허용해 주세요."
       : name === "NotFoundError" ? "카메라나 마이크를 찾지 못했어요."
       : `시작하지 못했어요: ${(e as Error).message}`;
     S.phase = "intro";
@@ -790,9 +784,9 @@ function onRms(rms: number) {
 }
 
 const VAD_LABELS: Record<VadMode, string> = {
-  loading: "말소리 판정 불러오는 중",
-  silero: "말소리 판정: AI(이 PC 안)",
-  energy: "말소리 판정: 음량만 (시끄러우면 침묵을 못 잡을 수 있어요)",
+  loading: "",
+  silero: "",
+  energy: "주변이 시끄러우면 말이 멈춘 걸 잘 못 알아챌 수 있어요",
 };
 function vadLabel() {
   return S.vad ? VAD_LABELS[S.vad.mode] : "";

@@ -63,7 +63,7 @@ function renderCue() {
     <div style="position:absolute;left:${left}%;top:${top}%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 8px rgba(52,87,240,.18)"></div>
     <div style="position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);text-align:center;font-size:28px;font-weight:700;color:var(--ink)">
       ${esc(c.label)}<div style="font-size:18px;font-weight:500;margin-top:6px">${c.eyesOnly ? "파란 점을 눈으로만 보세요" : "파란 점을 보세요"}</div>
-      <div style="font-size:16px;opacity:.7;margin-top:8px">${S.queue.length + 1}곳 남음${noFace ? " · 얼굴이 안 보여요" : ""}</div>
+      <div style="font-size:16px;opacity:.7;margin-top:8px">${S.queue.length + 1}곳 남음${noFace ? ", 얼굴이 안 보여요" : ""}</div>
     </div></div>`;
 }
 
@@ -145,7 +145,7 @@ function finish() {
 
 function row(name: string, s: Score | null) {
   if (!s) return `<tr><td>${name}</td><td colspan="6">오경보 10% 이하인 값이 없음</td></tr>`;
-  return `<tr><td>${name}</td><td>눈 ${s.eyeTol} · 고개 ${s.headDeg}°</td><td><b>${pct(s.recall)}</b></td><td>${pct(s.falseAlarm)}</td><td>${pct(s.precision)}</td><td>${pct(s.eyesOnlyRecall)}</td><td>${s.n}</td></tr>`;
+  return `<tr><td>${name}</td><td>눈 ${s.eyeTol}, 고개 ${s.headDeg}°</td><td><b>${pct(s.recall)}</b></td><td>${pct(s.falseAlarm)}</td><td>${pct(s.precision)}</td><td>${pct(s.eyesOnlyRecall)}</td><td>${s.n}</td></tr>`;
 }
 
 function resultHtml() {

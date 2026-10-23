@@ -211,3 +211,55 @@ pre { white-space: pre-wrap; font: 12px/1.5 var(--num); }
 .facts tr.off { opacity: .4; }
 .fact-src { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
 .facts-sum b { font-size: 22px; }
+
+/* ── 다듬기 (10/23): 한국어 줄바꿈, 간격 리듬, 포커스와 호버, 숫자 정렬 */
+body { word-break: keep-all; overflow-wrap: anywhere; }
+h1, h2, h3, .lead, .q { text-wrap: balance; }
+::selection { background: var(--primary-soft); }
+.wrap, .nav { max-width: 1080px; }
+.display-xl { font-size: clamp(40px, 6.5vw, 72px); line-height: 1.08; }
+.lead { font-size: 19px; margin-bottom: 40px; }
+h2 { font: 700 21px/1.3 var(--display); letter-spacing: -0.01em; margin: 40px 0 12px; }
+.card-dark > h2:first-child, .card-dark > h2[style] { margin-top: 0; }
+.card-dark + .card-dark, .card-dark + .actions { margin-top: 16px; }
+.muted { line-height: 1.6; }
+
+/* 입력: 흰 칸 + 얇은 테두리, 그림자는 뺌 */
+.field { box-shadow: none; gap: 4px; }
+.field-h { font-size: 19px; }
+.field textarea, .keybox input { background: var(--canvas); border: 1px solid var(--line); margin-top: 10px; transition: border-color .15s, box-shadow .15s; }
+.field textarea:focus, .keybox input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft); background: #fff; }
+.field textarea::placeholder, .keybox input::placeholder { color: #a3a2a8; }
+.keybox summary { font-size: 15px; }
+.keybox[open] summary { margin-bottom: 4px; }
+
+/* 버튼: 눌러도 되는 것처럼 보이게 */
+button { transition: transform .12s, box-shadow .15s, background-color .15s; }
+.btn-green:hover:not(:disabled) { background: #2847d6; box-shadow: 0 8px 20px rgba(52, 87, 240, 0.28); }
+.btn-primary:hover:not(:disabled) { background: #000; }
+.btn-ghost:hover, .btn-ghost-sm:hover, .clip:hover { border-color: #cfc8b9; }
+:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.actions { flex-direction: row; flex-wrap: wrap; align-items: center; }
+
+/* 단계 카드: 파스텔 바탕만, 테두리와 그림자 없이 */
+.steps { margin-top: 64px; gap: 12px; }
+.step-card { border: 0; box-shadow: none; padding: 22px 22px 26px; }
+.step-card h3 { font-size: 19px; margin: 12px 0 6px; }
+.step-card div:last-child { font-size: 15px; line-height: 1.55; }
+
+/* 결과 */
+.stats { gap: 12px; }
+.stat { border: 0; box-shadow: none; }
+.stat .v, td, .timer span, .facts-sum b { font-variant-numeric: tabular-nums; }
+.feedback { font-size: 18px; line-height: 1.75; max-width: 68ch; margin: 0; }
+td { line-height: 1.5; }
+tr:hover td { background: #ece8df; }
+.facts-sum { margin: 0 0 4px; }
+.facts-sum b { font-size: 20px; margin: 0 2px; }
+
+/* 카메라 화면 */
+.vad-mode:empty { display: none; }
+.qslot { backdrop-filter: blur(6px); }
+.toast { font-size: 18px; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

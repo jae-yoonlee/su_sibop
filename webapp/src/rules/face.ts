@@ -8,6 +8,8 @@ export interface FaceInfo {
   gazeX: number; // 눈동자 방향 (-1~1). 거울 화면이라 부호는 믿지 않고 본인 기준과 비교해서만 씀
   gazeY: number;
   gazeSrc: "iris" | "blend"; // 눈동자 방향을 어디서 얻었는지
+  blendX?: number; // 표정 점수로 잰 방향 (시선 측정 페이지에서 홍채 방식과 비교용)
+  blendY?: number;
   jaw: number; // 입 벌림 점수 (0~1). 말소리가 들리는데 입이 안 움직이면 다른 사람·TV 소리로 봄
 }
 
@@ -67,11 +69,15 @@ export function irisGaze(points: ArrayLike<Landmark>): { x: number; y: number } 
 export function analyze(matrix: ArrayLike<number>, blend: Record<string, number>, points?: ArrayLike<Landmark>): FaceInfo {
   const s = (k: string) => blend[k] ?? 0;
   const iris = points ? irisGaze(points) : null;
+  const blendX = (s("eyeLookOutLeft") + s("eyeLookInRight") - s("eyeLookInLeft") - s("eyeLookOutRight")) / 2;
+  const blendY = (s("eyeLookUpLeft") + s("eyeLookUpRight") - s("eyeLookDownLeft") - s("eyeLookDownRight")) / 2;
   return {
     ...headAngles(matrix),
     blink: Math.max(s("eyeBlinkLeft"), s("eyeBlinkRight")),
-    gazeX: iris?.x ?? (s("eyeLookOutLeft") + s("eyeLookInRight") - s("eyeLookInLeft") - s("eyeLookOutRight")) / 2,
-    gazeY: iris?.y ?? (s("eyeLookUpLeft") + s("eyeLookUpRight") - s("eyeLookDownLeft") - s("eyeLookDownRight")) / 2,
+    gazeX: iris?.x ?? blendX,
+    gazeY: iris?.y ?? blendY,
+    blendX,
+    blendY,
     gazeSrc: iris ? "iris" : "blend",
     jaw: s("jawOpen"),
   };

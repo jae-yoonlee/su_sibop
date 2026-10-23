@@ -25,7 +25,7 @@ export interface PostureBase {
 }
 
 /** 점 p에서 선분 a–b까지 거리 (렌즈와 질문 카드 사이를 오가며 보는 것도 정상) */
-function segDist(p: [number, number], a: [number, number], b: [number, number]) {
+export function segDist(p: [number, number], a: [number, number], b: [number, number]) {
   const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
   const len2 = dx * dx + dy * dy;
   const k = len2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;

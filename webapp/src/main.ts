@@ -157,7 +157,7 @@ function introHtml() {
           <span class="field-sub">이 컴퓨터 밖으로 나가지 않아요</span>
           <textarea id="resume" rows="12" placeholder="자기소개서 전체를 붙여 넣어 주세요">${esc(i.resume)}</textarea></label>
       </div>
-      <details class="keybox" ${i.geminiKey ? "" : "open"}><summary>Gemini 키 (선택)</summary>
+      <details class="keybox"><summary>Gemini 키 (선택)</summary>
         <p>넣으면 필요한 역량을 더 정확하게 정리해요. 채용공고만 보내고, 키는 이 브라우저에만 저장돼요.
         <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">무료 키 받기</a></p>
         <input id="gkey" type="password" autocomplete="off" placeholder="AIza…" value="${esc(i.geminiKey)}" />

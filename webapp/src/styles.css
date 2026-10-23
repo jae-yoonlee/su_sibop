@@ -267,3 +267,5 @@ tr:hover td { background: #ece8df; }
 /* 시작 버튼 + 개인정보 한 줄 */
 .cta { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; margin-top: 8px; }
 .privacy { margin: 0; font-size: 14px; color: var(--ink-2); max-width: 520px; }
+/* 준비 카드가 질문 자리와 겹치지 않게 그 아래로 (질문 자리는 시선 기준이라 옮기지 않음) */
+.prep-card { top: 132px; width: min(280px, calc(100% - 48px)); }

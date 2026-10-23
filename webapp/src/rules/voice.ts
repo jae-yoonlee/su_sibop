@@ -60,7 +60,7 @@ export class SileroGate {
 export type VoiceSetupStep = "noise" | "voice" | "done";
 export type VoiceSetupMessage = "noise" | "noise_high" | "voice" | "voice_low" | "voice_high" | "done";
 export const VOICE_SETUP_MESSAGES: Record<VoiceSetupMessage, string> = {
-  noise: "조용히 잠깐만 계세요. 주변 소리를 재고 있어요",
+  noise: "주변 소리를 재고 있어요. 스피커 소리는 끄고 잠깐 조용히 계세요",
   noise_high: "소리가 들려서 다시 재요. 말하지 말고 조용히 계세요",
   voice: "아래 문장을 평소 면접 목소리로 끝까지 읽어 주세요. 다 읽고 잠깐 멈추면 넘어가요",
   voice_low: "목소리가 작아요. 조금만 크게 다시 읽어 주세요",

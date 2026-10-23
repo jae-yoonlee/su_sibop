@@ -263,3 +263,7 @@ tr:hover td { background: #ece8df; }
 .toast { font-size: 18px; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* 시작 버튼 + 개인정보 한 줄 */
+.cta { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; margin-top: 8px; }
+.privacy { margin: 0; font-size: 14px; color: var(--ink-2); max-width: 520px; }

@@ -162,13 +162,10 @@ function introHtml() {
         <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">무료 키 받기</a></p>
         <input id="gkey" type="password" autocomplete="off" placeholder="AIza…" value="${esc(i.geminiKey)}" />
       </details>
-      <div class="chips">
-        <span class="badge">자소서와 영상은 이 컴퓨터 안에서만 써요</span>
-        <span class="chip" id="stt-chip">${STT_MODE_TEXT[S.sttMode]}</span>
-        <span class="chip">Chrome, Edge 권장</span>
-        <span class="chip">스피커 소리는 꺼 주세요</span>
+      <div class="cta">
+        <button class="btn-green" id="go">시작하기</button>
+        <p class="privacy">자소서와 영상은 이 컴퓨터 밖으로 나가지 않아요. <span id="stt-chip">${sttNote(S.sttMode)}</span></p>
       </div>
-      <button class="btn-green" id="go">시작하기</button>
       ${S.error ? `<div class="err">${S.error}</div>` : ""}
       <div class="steps">
         ${step(1, "역량 정리", "채용공고에서 필요한 역량을 뽑고 자소서와 맞춰 봐요")}
@@ -179,6 +176,9 @@ function introHtml() {
     </div>
   </div>`;
 }
+
+/** 시작 버튼 옆 안내: 받아쓰기가 Google을 거치는 경우만 알림 (2026-10-12 결정) */
+const sttNote = (m: SttMode) => (m === "cloud" ? "받아쓰기만 Google 서버를 거쳐요." : m === "none" ? "받아쓰기는 Chrome이나 Edge에서 돼요." : "");
 
 const step = (n: number, h: string, p: string) =>
   `<div class="step-card"><div class="n">STEP ${n}</div><h3>${h}</h3><div>${p}</div></div>`;
@@ -877,6 +877,6 @@ void preloadLlm();
 void sttMode().then((m) => {
   S.sttMode = m;
   const chip = $("#stt-chip");
-  if (chip) chip.textContent = STT_MODE_TEXT[m];
+  if (chip) chip.textContent = sttNote(m);
 });
 render();

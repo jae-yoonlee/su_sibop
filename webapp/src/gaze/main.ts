@@ -58,11 +58,11 @@ function renderCue() {
   const c = S.cue!;
   const left = Math.round(c.x * 100), top = Math.round(c.y * 100);
   const noFace = performance.now() / 1000 - S.lastFace > 0.5;
-  app.innerHTML = `<div style="position:fixed;inset:0;background:var(--bg, #0a0d3a)">
-    ${c.id === "calib-card" || c.id === "card" ? `<div style="position:absolute;left:30%;right:30%;top:14%;height:16%;border-radius:24px;background:#5865f2"></div>` : ""}
-    <div style="position:absolute;left:${left}%;top:${top}%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:#35ed7e;box-shadow:0 0 0 8px rgba(53,237,126,.3)"></div>
-    <div style="position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);text-align:center;font-size:28px;font-weight:700;color:#fff">
-      ${esc(c.label)}<div style="font-size:18px;font-weight:500;margin-top:6px">${c.eyesOnly ? "초록 점을 눈으로만 보세요" : "초록 점을 보세요"}</div>
+  app.innerHTML = `<div style="position:fixed;inset:0;background:var(--canvas)">
+    ${c.id === "calib-card" || c.id === "card" ? `<div style="position:absolute;left:30%;right:30%;top:14%;height:16%;border-radius:24px;background:var(--primary-soft);border:2px solid var(--primary)"></div>` : ""}
+    <div style="position:absolute;left:${left}%;top:${top}%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 8px rgba(52,87,240,.18)"></div>
+    <div style="position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);text-align:center;font-size:28px;font-weight:700;color:var(--ink)">
+      ${esc(c.label)}<div style="font-size:18px;font-weight:500;margin-top:6px">${c.eyesOnly ? "파란 점을 눈으로만 보세요" : "파란 점을 보세요"}</div>
       <div style="font-size:16px;opacity:.7;margin-top:8px">${S.queue.length + 1}곳 남음${noFace ? " · 얼굴이 안 보여요" : ""}</div>
     </div></div>`;
 }

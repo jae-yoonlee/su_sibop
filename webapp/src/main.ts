@@ -249,8 +249,8 @@ function overlayHtml() {
   return `
     <div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length} / ${TOTAL}</span>${follow}<span>${label}</span></div>
       <p class="q">${q}</p></div>
-    <div class="topbar"><div class="timer"><svg width="84" height="84"><circle cx="42" cy="42" r="36" stroke="rgba(255,255,255,.15)" stroke-width="8" fill="none"/>
-      <circle id="ring" cx="42" cy="42" r="36" stroke="${S.phase === "question" ? "#fff" : "#5865f2"}" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="0"/></svg><span id="sec"></span></div></div>
+    <div class="topbar"><div class="timer"><svg width="84" height="84"><circle cx="42" cy="42" r="36" stroke="#e4dfd4" stroke-width="8" fill="none"/>
+      <circle id="ring" cx="42" cy="42" r="36" stroke="${S.phase === "question" ? "#63646e" : "#3457f0"}" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="0"/></svg><span id="sec"></span></div></div>
     <div class="toasts"></div>
     ${S.phase === "answer" && S.sttMode !== "none" ? `<div class="stt-live" id="stt-live">받아쓰는 중…</div>` : ""}
     <div class="bottom-actions"><button class="btn-ghost-sm" id="skip">${S.phase === "question" ? "바로 답변 시작" : "답변 끝내기"}</button></div>

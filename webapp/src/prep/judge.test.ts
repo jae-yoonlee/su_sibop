@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addJudge, judgeIds, judgePrompt, parseJudge, weakSentences } from "./judge";
+import { addJudge, candidates, judgeIds, judgePrompt, parseJudge, weakSentences } from "./judge";
 import type { Coverage } from "./competency";
 
 const resume = "처음 해 보는 일이라 실패한 게시물도 많았지만, 매주 숫자를 기록하며 다음 시도를 정했습니다. 저는 커피를 좋아합니다.";
@@ -39,5 +39,22 @@ describe("애매한 문장 AI 판정", () => {
     });
     expect(js[0].yes).toBeNull();
     expect(js[0].raw).toContain("끊김");
+  });
+});
+
+describe("돌려 말한 문장 후보 (뜻 비교로 고르고 AI가 확인)", () => {
+  const r = "상대와 생각이 달라 다퉜지만 서로 원하는 것을 받아들였습니다. 저는 커피를 좋아합니다.";
+  it("규칙 0점이어도 뜻 점수가 기준 이상이면 후보", () => {
+    const c = candidates(["interpersonal", "math"], r, [
+      { id: "interpersonal", score: 0.83, sentence: "상대와 생각이 달라 다퉜지만 서로 원하는 것을 받아들였습니다.", passed: false },
+      { id: "math", score: 0.76, sentence: "저는 커피를 좋아합니다.", passed: false },
+    ]);
+    expect(c.map((x) => x.id)).toEqual(["interpersonal"]);
+    expect(c[0].cues[0]).toBe("뜻 0.83");
+  });
+  it("질문에 맞음/아님 예시가 들어간다", () => {
+    const p = judgePrompt("interpersonal", "문장");
+    expect(p).toContain("맞음 예");
+    expect(p).toContain("아님 예");
   });
 });

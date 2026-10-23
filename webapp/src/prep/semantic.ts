@@ -10,7 +10,7 @@ export const SEM = { alone: 0.88, withCue: 0.85 };
 export interface SemScore { id: string; score: number; sentence: string; passed: boolean }
 
 /** 역량별로 자소서에서 예시 문장과 가장 가까운 문장과 그 점수 */
-async function bestMatches(resume: string, ids: string[]) {
+export async function bestMatches(resume: string, ids: string[]) {
   const sents = sentences(resume);
   const protos = ids.flatMap((id) => PROTOTYPES[id].map((p) => ({ id, p })));
   if (!sents.length || !protos.length) return { mode: "fallback" as const, best: new Map<string, { score: number; sentence: string }>() };
@@ -44,6 +44,14 @@ export async function addSemantic(coverage: Coverage[], resume: string): Promise
     return { ...c, id, found: [`뜻 비슷함 ${b.score.toFixed(2)}`], evidence: b.sentence, via: "뜻" as const };
   });
   return { coverage: out, mode, added, scores };
+}
+
+/** AI 판정 후보용: 역량마다 가장 가까운 자소서 문장과 점수 (모델을 못 받았으면 빈 목록) */
+export async function semScores(resume: string, ids: string[]): Promise<SemScore[]> {
+  const { mode, best } = await bestMatches(resume, ids);
+  if (mode !== "model") return [];
+  const sents = sentences(resume);
+  return [...best].map(([id, b]) => ({ id, score: Math.round(b.score * 1000) / 1000, sentence: b.sentence, passed: passes(id, b.score, sents) }));
 }
 
 /** 검증용: 단어·문맥·뜻을 모두 써서 찾은 역량 id */

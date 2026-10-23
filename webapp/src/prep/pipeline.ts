@@ -115,7 +115,7 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
       // 3-2) 규칙이 약하게만 잡은 문장을 AI에게 묻기
       const ask = jsonAsker(JUDGE_SCHEMA, 60);
       if (ask) {
-        const j = await addJudge(s.coverage, input.resume, ask);
+        const j = await addJudge(s.coverage, input.resume, ask, s.semantic);
         s.coverage = j.coverage;
         s.judgments = j.judgments;
         if (j.added) s.note.resume = [s.note.resume, `AI 판정으로 근거 ${j.added}개 더 찾음`].filter(Boolean).join(", ");

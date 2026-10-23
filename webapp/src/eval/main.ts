@@ -8,7 +8,7 @@ import { judgeIds, JUDGE_SCHEMA, type Judgment } from "../prep/judge";
 import { COMPETENCIES } from "../prep/competency";
 const COMPETENCY_IDS = COMPETENCIES.map((c) => c.id);
 import { AI_DEADLINE_SEC } from "../prep/pipeline";
-import { findAll } from "../prep/semantic";
+import { findAll, semScores } from "../prep/semantic";
 import { embedError } from "../report/embed";
 import {
   blindSheets, byContext, byWords, caseInput, competencyEval, csv, splitCases, parseCsv, scoreAiAnswer, scoreSheets, summarize,
@@ -116,7 +116,8 @@ async function runJudge() {
     S.judge = `AI 판정 중… ${i + 1}/${S.ds!.cases.length}`;
     render();
     const ids = byContext(c.resume);
-    const js = await judgeIds(COMPETENCY_IDS.filter((id) => !ids.includes(id)), c.resume, ask, 10);
+    const rest = COMPETENCY_IDS.filter((id) => !ids.includes(id));
+    const js = await judgeIds(rest, c.resume, ask, 12, await semScores(c.resume, rest)); // 앱처럼 뜻 비교 후보도 같이
     judgments.push(...js.map((j) => ({ ...j, caseId: c.id })));
     found.set(c.id, [...ids, ...new Set(js.filter((j) => j.yes).map((j) => j.id))]);
   }

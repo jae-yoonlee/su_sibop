@@ -6,3 +6,7 @@ cpSync("node_modules/@mediapipe/tasks-vision/wasm", "public/mediapipe", { recurs
 // 검증 페이지용 가짜 자소서·채용공고 (원본은 저장소 루트 data/eval/)
 mkdirSync("public/eval", { recursive: true });
 cpSync("../data/eval/cases.json", "public/eval/cases.json");
+
+// 주변 소리 분류(YAMNet)용 MediaPipe Audio wasm
+mkdirSync("public/mediapipe-audio", { recursive: true });
+cpSync("node_modules/@mediapipe/tasks-audio/wasm", "public/mediapipe-audio", { recursive: true });

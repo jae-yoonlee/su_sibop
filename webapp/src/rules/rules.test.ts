@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { CameraSetup, positionIssue } from "./cameraSetup";
-import { headAngles, faceBox, type FaceInfo } from "./face";
+import { analyze, headAngles, faceBox, irisGaze, type FaceInfo } from "./face";
 import { FeedbackGate } from "./gate";
 import { PostureRules } from "./postureRules";
 import { AnswerCoach } from "./session";
 import { EnergyVad, SileroGate, VoiceRules, VoiceSetup } from "./voice";
 
 const CENTER = { cx: 0.5, cy: 0.45, w: 0.3 };
-const info = (o: Partial<FaceInfo> = {}): FaceInfo => ({ yaw: 0, pitch: 0, roll: 0, blink: 0, gazeX: 0, gazeY: 0, ...o });
+const info = (o: Partial<FaceInfo> = {}): FaceInfo => ({ yaw: 0, pitch: 0, roll: 0, blink: 0, gazeX: 0, gazeY: 0, gazeSrc: "blend", jaw: 0, ...o });
 const run = (from: number, to: number, step: number, fn: (t: number) => void) => {
   for (let t = from; t <= to + 1e-9; t += step) fn(Math.round(t * 1000) / 1000);
 };
@@ -377,5 +377,61 @@ describe("알림 간격", () => {
     expect(s.alerts.map((a) => a.name).sort()).toEqual(["down", "turn"]);
     expect(s.alerts.find((a) => a.name === "turn")!.shown).toBe(1);
     expect(s.alerts.find((a) => a.name === "down")!.shown).toBe(0);
+  });
+});
+
+describe("홍채 시선", () => {
+  // 478개 점: 눈 양끝 x 0.4~0.5 / 0.6~0.7, 눈꺼풀 y 0.48~0.52
+  const pts = (irisDx: number) => {
+    const p = Array.from({ length: 478 }, () => ({ x: 0.5, y: 0.5 }));
+    Object.assign(p[33], { x: 0.4 }); Object.assign(p[133], { x: 0.5 });
+    Object.assign(p[362], { x: 0.6 }); Object.assign(p[263], { x: 0.7 });
+    for (const i of [159, 386]) p[i].y = 0.48;
+    for (const i of [145, 374]) p[i].y = 0.52;
+    p[468] = { x: 0.45 + irisDx, y: 0.5 };
+    p[473] = { x: 0.65 + irisDx, y: 0.5 };
+    return p;
+  };
+  it("가운데면 0, 눈 길이의 10% 옮기면 0.4", () => {
+    expect(irisGaze(pts(0))!.x).toBeCloseTo(0);
+    expect(irisGaze(pts(0.01))!.x).toBeCloseTo(0.4);
+    expect(irisGaze(pts(-0.01))!.x).toBeCloseTo(-0.4);
+  });
+  it("점이 모자라면 표정 점수로 대신", () => {
+    expect(irisGaze(pts(0).slice(0, 468))).toBeNull();
+    const m = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -50, 1];
+    expect(analyze(m, { eyeLookOutLeft: 0.4, eyeLookInRight: 0.4 }).gazeSrc).toBe("blend");
+    expect(analyze(m, {}, pts(0.01)).gazeSrc).toBe("iris");
+  });
+});
+
+describe("남의 목소리 거르기", () => {
+  const base = { noiseRms: 0.001, noiseDb: -60, voiceDb: -25 };
+  const loud = 10 ** (-25 / 20);
+  it("말소리가 들려도 입이 안 움직이면 침묵이 끊기지 않는다", () => {
+    const v = new VoiceRules(base, 0);
+    let a: string[] = [];
+    for (let t = 0; t <= 6; t += 0.03) a = v.update(t, loud, true, 0.01);
+    expect(a).toContain("stuck");
+    expect(v.otherVoiceSec).toBeGreaterThan(5);
+  });
+  it("입이 움직이면 내 말로 본다", () => {
+    const v = new VoiceRules(base, 0);
+    let a: string[] = [];
+    for (let t = 0; t <= 6; t += 0.03) a = v.update(t, loud, true, 0.2);
+    expect(a).not.toContain("stuck");
+    expect(v.otherVoiceSec).toBe(0);
+  });
+  it("얼굴이 안 보이면(null) 소리만으로 판정", () => {
+    const v = new VoiceRules(base, 0);
+    let a: string[] = [];
+    for (let t = 0; t <= 6; t += 0.03) a = v.update(t, loud, true, null);
+    expect(a).not.toContain("stuck");
+  });
+  it("AnswerCoach가 입 벌림 점수 폭을 잰다", () => {
+    const c = new AnswerCoach({ box: { cx: 0.5, cy: 0.5, w: 0.3 }, gazeStd: 0.05 }, base, 0, "q");
+    for (let t = 0; t <= 1; t += 0.033) c.onFrame(t, { yaw: 0, pitch: 0 }, info({ jaw: t < 0.5 ? 0.1 : 0.3 }), { cx: 0.5, cy: 0.5, w: 0.3 });
+    expect(c.mouthMove(1)).toBeCloseTo(0.2);
+    expect(c.mouthMove(2)).toBeNull(); // 얼굴 프레임이 끊김
   });
 });

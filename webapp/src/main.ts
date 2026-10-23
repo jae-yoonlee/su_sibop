@@ -3,10 +3,11 @@ import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { createLandmarker, openCamera, runFaceLoop, type FrameResult } from "./media/camera";
 import { openMic, type Mic } from "./media/mic";
 import { startVad, type Vad, type VadMode } from "./media/vad";
+import { startSound, type SoundSensor } from "./media/sound";
 import { accuracy } from "./media/cer";
 import { STT_MODE_TEXT, sttMode, Transcriber, type SttMode } from "./media/stt";
 import { CameraSetup, SETUP_MESSAGES } from "./rules/cameraSetup";
-import { ANSWER_SEC, CLIP_LEAD_SEC, PROBLEM_COUNT, QUESTION_SEC, WARN_COUNT } from "./rules/constants";
+import { ANSWER_SEC, CLIP_LEAD_SEC, PROBLEM_COUNT, QUESTION_SEC, SOUND_EVERY_SEC, WARN_COUNT } from "./rules/constants";
 import { AnswerRecorder, fixDuration } from "./media/recorder";
 import { STATUS_ALERTS } from "./rules/gate";
 import { ALERT_LABELS, AnswerCoach, type AnswerStats } from "./rules/session";
@@ -55,6 +56,8 @@ const S = {
   delegate: "",
   mic: null as Mic | null,
   vad: null as Vad | null,
+  sound: null as SoundSensor | null,
+  soundAt: 0,
   gate: new SileroGate(),
   cam: new CameraSetup(),
   voice: new VoiceSetup(),
@@ -272,6 +275,12 @@ function resultHtml() {
       row.shown += a.shown;
       all.set(a.name, row);
     }
+  // 주변 소음은 가장 오래 들린 소리 종류를 붙인다 (소리 분류를 못 불러왔으면 그대로)
+  const kinds: Record<string, number> = {};
+  for (const r of S.results) for (const [k, v] of Object.entries(r.noiseKinds ?? {})) kinds[k] = (kinds[k] ?? 0) + v;
+  const loudest = Object.entries(kinds).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const noiseRow = all.get("noise");
+  if (noiseRow && loudest) noiseRow.label += ` (주로 ${loudest})`;
   const rows = [...all.values()].sort((a, b) => b.count - a.count);
   const total = rows.reduce((a, r) => a + r.count, 0);
   const shown = rows.reduce((a, r) => a + r.shown, 0);
@@ -564,10 +573,12 @@ function go(phase: Phase) {
 
 function startStt() {
   S.stt?.stop(0);
+  // 자소서의 프로젝트 이름, 숫자, 기간을 받아쓰기 힌트로 (사실 대조가 이 단어들을 비교하므로)
+  const hints = extractFacts(S.input.resume).filter((f) => f.kind !== "역할").map((f) => f.text);
   S.stt = new Transcriber(S.sttMode, (text) => {
     const live = $("#stt-live");
     if (live) live.textContent = `받아쓰는 중 · ${text.length}자 · “${text.slice(-30)}”`;
-  });
+  }, hints);
   S.stt.start();
 }
 
@@ -596,7 +607,7 @@ function endAnswer() {
     S.clips[qi] = url;
     if (S.phase === "result") render();
   });
-  S.results.push(S.coach.finish(now()));
+  S.results.push({ ...S.coach.finish(now()), sttRestarts: stt?.restarts ?? 0 });
   S.coach = null;
   if (asked.kind === "main") return void nextFollowup(asked, text, stt?.error ?? "");
   if (mainCount() < ROUNDS) {
@@ -634,7 +645,13 @@ async function start() {
     S.vad?.stop();
     S.gate = new SileroGate();
     S.vad = startVad((p) => S.gate.feed(now(), p), onVadMode);
-    S.mic = await openMic(onRms, (frame) => S.vad?.push(frame, now()));
+    S.mic = await openMic(onRms, (frame) => {
+      S.sound?.push(frame); // 말소리 판정기로 넘기면 버퍼가 옮겨지므로 먼저 복사
+      S.vad?.push(frame, now());
+    });
+    // 소리 종류 분류는 없어도 코칭이 되므로 기다리지 않고, 실패하면 조용히 뺀다
+    S.sound = null;
+    void startSound().then((s) => (S.sound = s)).catch((e) => console.warn("소리 분류 못 불러옴", e));
     const { lm, delegate } = await createLandmarker();
     S.lm = lm;
     S.delegate = delegate;
@@ -655,6 +672,12 @@ async function start() {
 }
 
 // ── 매 프레임·매 소리 조각 ─────────────────────────────────────────────
+
+/** 주변 소음 경고엔 들린 소리 종류를 붙인다 (예: 주변이 시끄러워요 (음악)) */
+function alertText(k: string) {
+  const kind = k === "noise" ? S.coach?.sound : null;
+  return kind ? `${ALERT_LABELS[k]} (${kind})` : ALERT_LABELS[k];
+}
 
 let lastFrameT = 0;
 function onFrame(r: FrameResult) {
@@ -692,7 +715,15 @@ function onRms(rms: number) {
       return render();
     }
   }
-  if (S.phase === "answer") S.coach?.onAudio(t, rms, S.vad?.mode === "silero" ? S.gate.at(t) : null);
+  if (S.phase === "answer") {
+    const speech = S.vad?.mode === "silero" ? S.gate.at(t) : null;
+    S.coach?.onAudio(t, rms, speech);
+    if (S.coach?.voice?.speaking) S.stt?.speech(); // 내 말로 본 때만 (TV 소리로 받아쓰기를 깨우지 않게)
+    else if (S.coach && S.sound?.ready && t - S.soundAt >= SOUND_EVERY_SEC) {
+      S.coach.onSound(S.sound.classify(), Math.min(t - S.soundAt, SOUND_EVERY_SEC * 2));
+      S.soundAt = t;
+    }
+  }
 }
 
 const VAD_LABELS: Record<VadMode, string> = {
@@ -753,7 +784,7 @@ function tickUi() {
     const want = S.coach.shown.join(",");
     if (box && box.dataset.shown !== want) {
       box.dataset.shown = want;
-      box.innerHTML = S.coach.shown.map((k) => `<div class="toast ${STATUS_ALERTS.has(k) ? "status" : ""}">${ALERT_LABELS[k]}</div>`).join("");
+      box.innerHTML = S.coach.shown.map((k) => `<div class="toast ${STATUS_ALERTS.has(k) ? "status" : ""}">${alertText(k)}</div>`).join("");
     }
   }
   const dbg = $(".debug");

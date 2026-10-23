@@ -62,7 +62,7 @@ export function runFaceLoop(video: HTMLVideoElement, lm: FaceLandmarker, onFrame
       if (pts && mat && bs) {
         const blend: Record<string, number> = {};
         for (const c of bs.categories) blend[c.categoryName] = c.score;
-        info = analyze(mat.data, blend);
+        info = analyze(mat.data, blend, pts);
         box = faceBox(pts);
       }
       onFrame({ t: now / 1000, info, box, procMs });

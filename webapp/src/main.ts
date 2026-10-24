@@ -16,9 +16,8 @@ import { SileroGate, VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
 import { checkFacts, extractFacts, RECHECK_SCHEMA, type FactResult } from "./report/facts";
 import { answerCompetency } from "./report/answerComp";
 import { FEEDBACK_SCHEMA, makeFeedback, type Feedback } from "./report/feedback";
-import { JUDGE_SCHEMA } from "./prep/judge";
 import { preloadEmbedder } from "./report/embed";
-import { currentModel, followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
+import { currentModel, followupAsker, jsonAsker, yesNoAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
 import { ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
 import { runPrep, type PrepState, type StepState } from "./prep/pipeline";
 
@@ -358,7 +357,7 @@ async function runAnswerComp() {
   S.answerComp = "running";
   if (S.phase === "result") render();
   try {
-    S.answerComp = await answerCompetency(S.prep.coverage, S.transcripts, jsonAsker(JUDGE_SCHEMA, 60));
+    S.answerComp = await answerCompetency(S.prep.coverage, S.transcripts, yesNoAsker());
   } catch {
     S.answerComp = { rows: [], judgments: [] };
   }

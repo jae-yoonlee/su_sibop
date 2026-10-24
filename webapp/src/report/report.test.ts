@@ -21,7 +21,7 @@ describe("답변에서 역량 찾기", () => {
     expect(r.rows.find((x) => x.id === "interpersonal")!.verdict).toBe("자소서만");
   });
   it("규칙이 못 잡은 역량은 AI 판정으로", async () => {
-    const r = await answerCompetency([cov("self", ["배웠"])], ["처음 해 보는 일이라 실패도 많았지만 매주 기록하며 다음 시도를 정했습니다"], async () => '{"yes": true, "why": "실패 뒤 다시 시도"}');
+    const r = await answerCompetency([cov("self", ["배웠"])], ["처음 해 보는 일이라 실패도 많았지만 매주 기록하며 다음 시도를 정했습니다"], async () => ({ p: 0.9, raw: "yes" }));
     expect(r.rows[0].via).toBe("AI");
     expect(r.rows[0].q).toBe(0);
   });

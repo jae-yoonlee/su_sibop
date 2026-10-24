@@ -1,7 +1,7 @@
 // 면접 답변에서도 역량 찾기: 자소서에 쓴 필요역량이 실제 답변에서도 드러났는지.
 // 자소서와 같은 규칙(단어 → 문맥 → 애매한 문장 AI 판정)을 받아쓴 답변에 돌린다. 모두 이 PC 안에서.
 import { COMPETENCIES, findCompetencies, guessCompetency, type Coverage } from "../prep/competency";
-import { judgeIds, type Judgment } from "../prep/judge";
+import { judgeIds, type Judgment, type YesNoAsk } from "../prep/judge";
 import { splitSentences } from "./facts";
 
 export type AnswerVerdict = "둘 다" | "자소서만" | "답변만" | "둘 다 없음";
@@ -30,7 +30,7 @@ export function verdictOf(inResume: boolean, inAnswer: boolean): AnswerVerdict {
 export async function answerCompetency(
   coverage: Coverage[],
   answers: string[],
-  ask: ((prompt: string) => Promise<string>) | null = null,
+  ask: YesNoAsk | null = null,
 ): Promise<{ rows: AnswerCompRow[]; judgments: Judgment[] }> {
   const texts = answers.map((a) => answerText(a ?? ""));
   const hits = texts.map((t) => findCompetencies(t, true));

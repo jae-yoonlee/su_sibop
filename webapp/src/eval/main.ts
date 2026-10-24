@@ -3,8 +3,8 @@
 import "../styles.css";
 import "./eval.css";
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
-import { createEngine, currentModel, generateQuestions, jsonAsker, preloadLlm } from "../prep/llm";
-import { judgeIds, JUDGE_SCHEMA, type Judgment } from "../prep/judge";
+import { createEngine, currentModel, generateQuestions, preloadLlm, yesNoAsker } from "../prep/llm";
+import { judgeIds, type Judgment } from "../prep/judge";
 import { COMPETENCIES } from "../prep/competency";
 const COMPETENCY_IDS = COMPETENCIES.map((c) => c.id);
 import { AI_DEADLINE_SEC } from "../prep/pipeline";
@@ -103,7 +103,7 @@ async function runJudge() {
   S.judge = "AI 불러오는 중…";
   render();
   const engine = await preloadLlm();
-  const ask = engine && jsonAsker(JUDGE_SCHEMA, 60);
+  const ask = engine && yesNoAsker();
   if (!ask) {
     S.judge = null;
     alert("이 PC에서는 AI를 쓸 수 없어요 (WebGPU 필요)");

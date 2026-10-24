@@ -148,3 +148,15 @@ describe("NCS 하위능력 문맥 규칙 (2026-10-23)", () => {
     expect(ids("저는 근무표라는 말을 좋아합니다.")).not.toContain("resource");
   });
 });
+
+describe("말로 한 답변 표현 (2026-10-24)", () => {
+  const ids = (t: string) => findCompetencies(t, true).map((h) => h.id);
+  it("습관, 계획으로 말한 행동도 잡음", () => {
+    expect(ids("저는 출근하면 일정을 먼저 세우고 급한 일부터 처리하는 편입니다.")).toContain("resource");
+    expect(ids("목표를 세우고 퇴근 후에 꾸준히 영어 공부를 하고 있습니다.")).toContain("self");
+    expect(ids("동료가 화가 나 있으면 먼저 이야기를 들어주고 입장을 이해하려고 합니다.")).toContain("interpersonal");
+  });
+  it("관계없는 말에는 안 걸림", () => {
+    expect(ids("집이 가까워서 이 회사에 지원했습니다.")).toEqual([]);
+  });
+});

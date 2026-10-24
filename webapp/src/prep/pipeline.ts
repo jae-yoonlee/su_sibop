@@ -1,8 +1,8 @@
 // 자료 분석: 규칙 → (Gemini) 필요역량 → 자소서 대조 → 브라우저 안 AI 질문 3개. 카메라 세팅과 동시에 돈다.
 import { checkResume, findCompetencies, requiredFromRules, type Coverage, type Hit } from "./competency";
 import { summarizeRequired } from "./gemini";
-import { aiQuestions, jsonAsker, preloadLlm } from "./llm";
-import { addJudge, JUDGE_SCHEMA, type Judgment } from "./judge";
+import { aiQuestions, preloadLlm, yesNoAsker } from "./llm";
+import { addJudge, type Judgment } from "./judge";
 import { addSemantic, type SemScore } from "./semantic";
 import { preloadEmbedder } from "../report/embed";
 import { parseAiQuestions, ruleQuestions, type Question } from "./questions";
@@ -113,7 +113,7 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
       if (!engine) throw new Error("이 PC에서는 AI를 쓸 수 없어 규칙 질문을 써요");
       s.timings.model = sec();
       // 3-2) 규칙이 약하게만 잡은 문장을 AI에게 묻기
-      const ask = jsonAsker(JUDGE_SCHEMA, 60);
+      const ask = yesNoAsker();
       if (ask) {
         const j = await addJudge(s.coverage, input.resume, ask, s.semantic);
         s.coverage = j.coverage;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addJudge, candidates, judgeIds, judgePrompt, parseJudge, weakSentences } from "./judge";
+import { addJudge, candidates, judgeIds, judgeMessages, weakSentences, yesProb } from "./judge";
 import type { Coverage } from "./competency";
 
 const resume = "처음 해 보는 일이라 실패한 게시물도 많았지만, 매주 숫자를 기록하며 다음 시도를 정했습니다. 저는 커피를 좋아합니다.";
@@ -14,22 +14,28 @@ describe("애매한 문장 AI 판정", () => {
   it("이미 규칙으로 인정된 역량은 묻지 않는다", () => {
     expect(weakSentences("self", "독학으로 디자인을 공부했습니다. 그 과정에서 많이 배웠습니다.")).toEqual([]);
   });
-  it("AI 답 읽기 (생각 태그, 깨진 답)", () => {
-    expect(parseJudge('<think>음</think>{"yes": true, "why": "실패에서 배움"}')).toEqual({ yes: true, why: "실패에서 배움" });
-    expect(parseJudge("모르겠어요").yes).toBeNull();
+  it("첫 단어 확률에서 yes 확률을 읽는다", () => {
+    expect(yesProb([{ token: "yes", logprob: Math.log(0.6) }, { token: "no", logprob: Math.log(0.2) }])).toBeCloseTo(0.75);
+    expect(yesProb([{ token: " No", logprob: Math.log(0.9) }])).toBe(0);
+    expect(yesProb([{ token: "{", logprob: 0 }])).toBeNull();
   });
-  it("질문에 NCS 정의와 문장이 들어간다", () => {
-    const p = judgePrompt("self", "문장");
-    expect(p).toContain("자기개발");
-    expect(p).toContain('"문장"');
+  it("질문에 NCS 정의, 예시 대화, 문장이 들어가고 마지막은 묻는 말", () => {
+    const m = judgeMessages("self", "문장");
+    expect(m[0].role).toBe("system");
+    expect(m.map((x) => x.role).slice(1)).toEqual(["user", "assistant", "user", "assistant", "user"]);
+    expect(m[2].content).toBe("yes");
+    expect(m[4].content).toBe("no");
+    expect(m[5].content).toContain("자기개발");
+    expect(m[5].content).toContain('"문장"');
   });
   it("yes면 근거 없던 칸을 AI 근거로 채우고 원문을 남긴다", async () => {
     const cov: Coverage[] = [{ id: "self", name: "자기개발", reason: "", words: [], found: [], evidence: "" }];
-    const r = await addJudge(cov, resume, async () => '{"yes": true, "why": "실패 뒤 다시 시도"}');
+    const r = await addJudge(cov, resume, async () => ({ p: 0.8, raw: "yes" }));
     expect(r.added).toBe(1);
     expect(r.coverage[0].via).toBe("AI");
     expect(r.judgments[0].raw).toContain("yes");
-    const no = await addJudge(cov, resume, async () => '{"yes": false, "why": "행동 없음"}');
+    expect(r.judgments[0].p).toBe(0.8);
+    const no = await addJudge(cov, resume, async () => ({ p: 0.3, raw: "no" }));
     expect(no.added).toBe(0);
     expect(no.judgments[0].yes).toBe(false);
   });
@@ -52,9 +58,8 @@ describe("돌려 말한 문장 후보 (뜻 비교로 고르고 AI가 확인)", (
     expect(c.map((x) => x.id)).toEqual(["interpersonal"]);
     expect(c[0].cues[0]).toBe("뜻 0.83");
   });
-  it("질문에 맞음/아님 예시가 들어간다", () => {
-    const p = judgePrompt("interpersonal", "문장");
-    expect(p).toContain("맞음 예");
-    expect(p).toContain("아님 예");
+  it("확률을 못 읽으면 판정 없음", async () => {
+    const js = await judgeIds(["self"], resume, async () => ({ p: null, raw: "{" }));
+    expect(js[0].yes).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import type { InitProgressReport, WebWorkerMLCEngine } from "@mlc-ai/web-llm";
 import { QUESTION_SCHEMA, questionPrompt } from "./questions";
 import { FOLLOWUP_SCHEMA } from "./followup";
 import type { Coverage } from "./competency";
+import { yesProb, type YesNoAsk } from "./judge";
 
 export type LlmState =
   | { kind: "idle" }
@@ -114,6 +115,25 @@ export function jsonAsker(schema: string, maxTokens: number): ((prompt: string) 
       extra_body: { enable_thinking: false },
     });
     return res.choices[0]?.message?.content ?? "";
+  };
+}
+
+/** 역량 판정용: 한 단어(yes/no)만 만들고 그 자리의 후보 확률을 읽는다. 모델이 아직 준비 안 됐으면 null */
+export function yesNoAsker(): YesNoAsk | null {
+  if (!engine || llmState.kind !== "ready") return null;
+  const e = engine;
+  return async (messages) => {
+    const res = await e.chat.completions.create({
+      messages,
+      temperature: 1, // 고른 단어는 안 쓰고 확률만 읽으므로 원래 분포 그대로
+      max_tokens: 1,
+      logprobs: true,
+      top_logprobs: 5,
+      extra_body: { enable_thinking: false },
+    });
+    const c = res.choices[0];
+    const top = c?.logprobs?.content?.[0]?.top_logprobs ?? [];
+    return { p: yesProb(top), raw: `${c?.message?.content ?? ""} | ${top.map((t) => `${t.token}:${Math.exp(t.logprob).toFixed(2)}`).join(" ")}` };
   };
 }
 

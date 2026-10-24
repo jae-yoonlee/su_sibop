@@ -1,8 +1,9 @@
 // 자료 분석: 규칙 → (Gemini) 필요역량 → 자소서 대조 → 브라우저 안 AI 질문 3개. 카메라 세팅과 동시에 돈다.
 import { checkResume, findCompetencies, requiredFromRules, type Coverage, type Hit } from "./competency";
 import { summarizeRequired } from "./gemini";
-import { aiQuestions, preloadLlm } from "./llm";
-import { addSemantic } from "./semantic";
+import { aiQuestions, jsonAsker, preloadLlm } from "./llm";
+import { addJudge, JUDGE_SCHEMA, type Judgment } from "./judge";
+import { addSemantic, type SemScore } from "./semantic";
 import { preloadEmbedder } from "../report/embed";
 import { parseAiQuestions, ruleQuestions, type Question } from "./questions";
 
@@ -29,6 +30,8 @@ export interface PrepState {
   questionsBy: "ai" | "rules";
   done: boolean; // 질문 확정
   timings: Record<string, number>; // 초
+  semantic: SemScore[]; // 뜻 비교 점수 (근거 없던 역량마다 가장 가까운 문장)
+  judgments: Judgment[]; // 애매한 문장에 대한 PC 안 AI의 판정 원문
 }
 
 export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): PrepState {
@@ -44,6 +47,8 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
     questionsBy: "rules",
     done: false,
     timings: {},
+    semantic: [],
+    judgments: [],
   };
   const emit = () => onChange({ ...s, steps: { ...s.steps } });
 
@@ -92,6 +97,7 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
     else if (sem.mode === "fallback") s.note.resume = "뜻 비교 모델을 못 받아 단어·문맥 규칙으로만 대조했어요";
     else {
       s.coverage = sem.coverage;
+      s.semantic = sem.scores ?? [];
       if (sem.added) s.note.resume = `뜻 비교로 근거 ${sem.added}개 더 찾음`;
     }
     s.timings.resume = sec();
@@ -106,6 +112,16 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
       const engine = await preloadLlm();
       if (!engine) throw new Error("이 PC에서는 AI를 쓸 수 없어 규칙 질문을 써요");
       s.timings.model = sec();
+      // 3-2) 규칙이 약하게만 잡은 문장을 AI에게 묻기
+      const ask = jsonAsker(JUDGE_SCHEMA, 60);
+      if (ask) {
+        const j = await addJudge(s.coverage, input.resume, ask, s.semantic);
+        s.coverage = j.coverage;
+        s.judgments = j.judgments;
+        if (j.added) s.note.resume = [s.note.resume, `AI 판정으로 근거 ${j.added}개 더 찾음`].filter(Boolean).join(", ");
+        s.timings.judge = sec();
+        emit();
+      }
       const fallback = ruleQuestions(input.resume, s.coverage);
       let { questions, aiCount } = parseAiQuestions(await aiQuestions(input.resume, s.coverage), input.resume, fallback);
       if (aiCount < 3) {

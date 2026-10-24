@@ -32,8 +32,8 @@ describe("역량 규칙", () => {
 
   it("자소서 대조: 협업·책임감(맡았·담당)은 근거 있음, 의사소통은 근거 없음", () => {
     const cov = checkResume(requiredFromRules(POSTING), RESUME);
-    expect(cov.find((c) => c.name === "대인관계·협업")!.found).toContain("협업");
-    expect(cov.find((c) => c.name === "직업윤리·책임감")!.found).toContain("담당");
+    expect(cov.find((c) => c.name === "대인관계와 협업")!.found).toContain("협업");
+    expect(cov.find((c) => c.name === "직업윤리와 책임감")!.found).toContain("담당");
     expect(cov.find((c) => c.name === "의사소통")!.found).toEqual([]);
   });
 });
@@ -130,5 +130,33 @@ describe("문맥 규칙: 명사만으로는 역량 인정 안 함 (2026-10-19)",
   });
   it("'하게 되었다'만으로는 자기개발이 아님", () => {
     expect(ids("그 결과 다른 팀과 함께 일하게 되었습니다.")).not.toContain("self");
+  });
+});
+
+describe("NCS 하위능력 문맥 규칙 (2026-10-23)", () => {
+  const ids = (t: string) => findCompetencies(t, true).map((h) => h.id);
+  it("갈등관리: 의견이 부딪혔지만 맞춤", () => {
+    expect(ids("팀원과 의견이 자주 부딪혔지만 자료로 돌아가 이야기하며 방향을 맞췄습니다.")).toContain("interpersonal");
+  });
+  it("인적자원관리: 근무표를 짬", () => {
+    expect(ids("봉사자 12명의 근무표를 짜는 일을 맡았습니다.")).toContain("resource");
+  });
+  it("기초연산: 매출과 현금을 맞춤", () => {
+    expect(ids("하루 매출과 현금이 맞지 않는 날을 정산하며 찾았습니다.")).toContain("math");
+  });
+  it("단어만 있으면 여전히 인정 안 함", () => {
+    expect(ids("저는 근무표라는 말을 좋아합니다.")).not.toContain("resource");
+  });
+});
+
+describe("말로 한 답변 표현 (2026-10-24)", () => {
+  const ids = (t: string) => findCompetencies(t, true).map((h) => h.id);
+  it("습관, 계획으로 말한 행동도 잡음", () => {
+    expect(ids("저는 출근하면 일정을 먼저 세우고 급한 일부터 처리하는 편입니다.")).toContain("resource");
+    expect(ids("목표를 세우고 퇴근 후에 꾸준히 영어 공부를 하고 있습니다.")).toContain("self");
+    expect(ids("동료가 화가 나 있으면 먼저 이야기를 들어주고 입장을 이해하려고 합니다.")).toContain("interpersonal");
+  });
+  it("관계없는 말에는 안 걸림", () => {
+    expect(ids("집이 가까워서 이 회사에 지원했습니다.")).toEqual([]);
   });
 });

@@ -3,9 +3,12 @@
 import "../styles.css";
 import "./eval.css";
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
-import { createEngine, generateQuestions } from "../prep/llm";
+import { createEngine, currentModel, generateQuestions, jsonAsker, preloadLlm } from "../prep/llm";
+import { judgeIds, JUDGE_SCHEMA, type Judgment } from "../prep/judge";
+import { COMPETENCIES } from "../prep/competency";
+const COMPETENCY_IDS = COMPETENCIES.map((c) => c.id);
 import { AI_DEADLINE_SEC } from "../prep/pipeline";
-import { findAll } from "../prep/semantic";
+import { findAll, semScores } from "../prep/semantic";
 import { embedError } from "../report/embed";
 import {
   blindSheets, byContext, byWords, caseInput, competencyEval, csv, splitCases, parseCsv, scoreAiAnswer, scoreSheets, summarize,
@@ -14,11 +17,11 @@ import {
 
 // 비교 후보. 크기는 WebLLM 설정의 그래픽 메모리 요구량(16비트 연산 지원 기준).
 const MODELS = [
-  { base: "Qwen3-0.6B", note: "약 1.4GB · 가장 가벼움" },
-  { base: "Qwen3-1.7B", note: "약 2.0GB · 지금 앱 기본값" },
-  { base: "Qwen3.5-0.8B", note: "약 1.6GB · 새 세대 소형" },
-  { base: "Qwen3.5-2B", note: "약 2.2GB · 지금 기본값의 유력 대체" },
-  { base: "Qwen3-4B", note: "약 3.4GB · 품질 상한 확인용" },
+  { base: "Qwen3-0.6B", note: "약 1.4GB, 가장 가벼움" },
+  { base: "Qwen3-1.7B", note: "약 2.0GB, 지금 앱 기본값" },
+  { base: "Qwen3.5-0.8B", note: "약 1.6GB, 새 세대 소형" },
+  { base: "Qwen3.5-2B", note: "약 2.2GB, 지금 기본값의 유력 대체" },
+  { base: "Qwen3-4B", note: "약 3.4GB, 품질 상한 확인용" },
 ];
 
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -40,6 +43,7 @@ const S = {
   loadMs: {} as Record<string, number>,
   errors: {} as Record<string, string>,
   sem: null as null | "running" | { found: Map<string, string[]>; mode: "model" | "fallback"; ms: number }, // 뜻 비교 포함 결과
+  judge: null as null | string | { found: Map<string, string[]>; judgments: (Judgment & { caseId: string })[]; model: string; ms: number }, // AI 판정 포함 결과 (문자열 = 진행 상황)
   scored: null as ReturnType<typeof scoreSheets> | null,
   scoreErr: "",
 };
@@ -62,6 +66,8 @@ function methodsHtml() {
     ["단어 사전만 (예전)", byWords, undefined],
     ["단어 + 문맥 규칙 (지금 앱)", byContext, undefined],
   ];
+  const judge = typeof S.judge === "object" && S.judge ? S.judge : null;
+  if (judge) rows.push([`단어 + 문맥 + AI 판정 (${judge.model})`, byContext, judge.found]);
   if (sem) rows.push([`단어 + 문맥 + 뜻 비교 (${sem.mode === "model" ? "의미 모델" : "모델 못 받음 → 문맥까지만"})`, byContext, sem.found]);
   const cell = (cs: typeof dev, f: (typeof rows)[0][1], m?: Map<string, string[]>) => {
     const r = competencyEval(cs, f, m);
@@ -69,11 +75,12 @@ function methodsHtml() {
   };
   return `
     <h3>찾는 방식별 비교</h3>
-    <p class="muted">문맥 규칙은 1·3·5…번째 자소서만 보고 만들었습니다. 그래서 <b>2·4·6…번째(안 본 절반)</b> 점수가 실제 실력에 가깝습니다. 두 쪽 차이가 크면 규칙이 본 자료에만 맞춰진 것입니다.</p>
+    <p class="muted">문맥 규칙은 1, 3, 5…번째 자소서만 보고 만들었습니다. 그래서 <b>2, 4, 6…번째(안 본 절반)</b> 점수가 실제 실력에 가깝습니다. 두 쪽 차이가 크면 규칙이 본 자료에만 맞춰진 것입니다.</p>
     <table><thead><tr><th>방식</th><th>본 절반 정확도</th><th>본 절반 재현율</th><th>안 본 절반 정확도</th><th>안 본 절반 재현율</th></tr></thead><tbody>
     ${rows.map(([name, f, m]) => `<tr><td>${name}</td>${cell(dev, f, m)}${cell(test, f, m)}</tr>`).join("")}
     </tbody></table>
-    ${sem ? `<p class="muted">뜻 비교 ${sec(sem.ms)}${sem.mode === "fallback" ? ` · 모델 오류: ${esc(embedError || "알 수 없음")}` : ""}</p>` : `<button class="btn-green" id="semrun" ${S.sem === "running" ? "disabled" : ""}>${S.sem === "running" ? "뜻 비교 중… (처음엔 모델 약 150MB 받음)" : "뜻 비교까지 측정"}</button>`}`;
+    ${judge ? `<p class="muted">AI 판정 ${judge.judgments.length}문장, ${sec(judge.ms)} <button class="btn-primary" id="dljudge">AI 판정 원본 JSON</button></p>` : `<button class="btn-green" id="judgerun" ${typeof S.judge === "string" ? "disabled" : ""}>${typeof S.judge === "string" ? esc(S.judge) : "애매한 문장 AI 판정까지 측정"}</button> `}
+    ${sem ? `<p class="muted">뜻 비교 ${sec(sem.ms)}${sem.mode === "fallback" ? `, 모델 오류: ${esc(embedError || "알 수 없음")}` : ""}</p>` : `<button class="btn-green" id="semrun" ${S.sem === "running" ? "disabled" : ""}>${S.sem === "running" ? "뜻 비교 중… (처음엔 모델 약 150MB 받음)" : "뜻 비교까지 측정"}</button>`}`;
 }
 
 async function runSemantic() {
@@ -91,6 +98,33 @@ async function runSemantic() {
   render();
 }
 
+/** 규칙이 약하게만 잡은 문장을 PC 안 AI에게 물어, yes면 그 역량을 찾은 것으로 친다 (앱과 같은 모델, 같은 질문) */
+async function runJudge() {
+  S.judge = "AI 불러오는 중…";
+  render();
+  const engine = await preloadLlm();
+  const ask = engine && jsonAsker(JUDGE_SCHEMA, 60);
+  if (!ask) {
+    S.judge = null;
+    alert("이 PC에서는 AI를 쓸 수 없어요 (WebGPU 필요)");
+    return render();
+  }
+  const t0 = performance.now();
+  const found = new Map<string, string[]>();
+  const judgments: (Judgment & { caseId: string })[] = [];
+  for (const [i, c] of S.ds!.cases.entries()) {
+    S.judge = `AI 판정 중… ${i + 1}/${S.ds!.cases.length}`;
+    render();
+    const ids = byContext(c.resume);
+    const rest = COMPETENCY_IDS.filter((id) => !ids.includes(id));
+    const js = await judgeIds(rest, c.resume, ask, 12, await semScores(c.resume, rest)); // 앱처럼 뜻 비교 후보도 같이
+    judgments.push(...js.map((j) => ({ ...j, caseId: c.id })));
+    found.set(c.id, [...ids, ...new Set(js.filter((j) => j.yes).map((j) => j.id))]);
+  }
+  S.judge = { found, judgments, model: currentModel(), ms: performance.now() - t0 };
+  render();
+}
+
 // ── 화면 ─────────────────────────────────────────────
 
 function render() {
@@ -100,25 +134,25 @@ function render() {
   app.innerHTML = `
   <div class="page"><div class="wrap ev">
     <div class="nav"><div class="brand">면접 코치 <b>검증</b></div><a class="link" href="./">앱으로</a></div>
-    <h1 class="display-md">모델·규칙 검증</h1>
+    <h1 class="display-md">모델과 규칙 검증</h1>
     <p class="lead">팀 내부용입니다. 가짜 자소서로 ① 역량 찾기 규칙 ② 질문 모델을 측정하고, 결과를 표 파일로 내려받습니다.</p>
 
     <section class="card-dark">
       <h2>이 PC</h2>
       <p>${esc(S.device.text)}</p>
-      <p class="muted">자료: ${esc(S.dsName)} · 자소서 ${ds?.cases.length ?? 0}개, 채용공고 ${ds?.postings.length ?? 0}개
+      <p class="muted">자료: ${esc(S.dsName)}, 자소서 ${ds?.cases.length ?? 0}개, 채용공고 ${ds?.postings.length ?? 0}개
         <label class="filebtn">다른 자료 불러오기<input type="file" id="dsfile" accept=".json" hidden /></label></p>
     </section>
 
     <section class="card-dark">
       <h2>① 역량 찾기 규칙 (AI 없음, 바로 계산)</h2>
       ${comp ? `
-      <p>자소서에서 찾은 역량이 정답 라벨과 얼마나 맞는지: <b>정확도(찾은 것 중 맞은 비율) ${pct(comp.precision)}</b> · <b>재현율(있어야 할 것 중 찾은 비율) ${pct(comp.recall)}</b></p>
+      <p>자소서에서 찾은 역량이 정답 라벨과 얼마나 맞는지: <b>정확도(찾은 것 중 맞은 비율) ${pct(comp.precision)}</b>, <b>재현율(있어야 할 것 중 찾은 비율) ${pct(comp.recall)}</b></p>
       <p class="muted">정답 라벨은 자료를 만든 사람이 붙인 1차 값입니다. 다른 사람이 따로 라벨을 붙여 비교하기 전까지는 참고용입니다.</p>
       <table><thead><tr><th>역량</th><th>맞음</th><th>잘못 찾음</th><th>놓침</th><th>정확도</th><th>재현율</th></tr></thead><tbody>
       ${comp.scores.map((s) => `<tr><td>${s.name}</td><td>${s.tp}</td><td>${s.fp}</td><td>${s.fn}</td><td>${pct(s.precision)}</td><td>${pct(s.recall)}</td></tr>`).join("")}
       </tbody></table>
-      <details><summary>자소서별로 놓친 것·잘못 찾은 것</summary>
+      <details><summary>자소서별로 놓친 것과 잘못 찾은 것</summary>
       <table><tbody>${comp.rows.filter((r) => r.missed.length || r.extra.length).map((r) => `<tr><td>${r.id}</td><td>놓침: ${r.missed.join(", ") || "-"}</td><td>잘못 찾음: ${r.extra.join(", ") || "-"}</td></tr>`).join("")}</tbody></table>
       </details>
       <button class="btn-primary" id="dlcomp">역량 결과 CSV</button>
@@ -132,7 +166,7 @@ function render() {
         ${MODELS.map((m) => {
           const ok = S.device.gpu === "ok" && S.available.has(modelId(m.base));
           return `<label class="model ${ok ? "" : "off"}"><input type="checkbox" data-m="${m.base}" ${S.pick.has(m.base) && ok ? "checked" : ""} ${ok && !S.running ? "" : "disabled"} />
-            <b>${m.base}</b><span>${m.note}${ok ? "" : " · 이 PC에선 불가"}</span></label>`;
+            <b>${m.base}</b><span>${m.note}${ok ? "" : ", 이 PC에선 불가"}</span></label>`;
         }).join("")}
       </div>
       <div class="opts">
@@ -181,7 +215,7 @@ function bind() {
     if (!f) return;
     try {
       const d = JSON.parse(await f.text()) as Dataset;
-      if (!Array.isArray(d.cases) || !Array.isArray(d.postings)) throw new Error("cases·postings 목록이 없어요");
+      if (!Array.isArray(d.cases) || !Array.isArray(d.postings)) throw new Error("cases, postings 목록이 없어요");
       S.ds = d;
       S.sem = null;
       S.dsName = f.name;
@@ -197,6 +231,12 @@ function bind() {
   $("nRun")?.addEventListener("change", (e) => (S.runsPer = Number((e.target as HTMLSelectElement).value)));
   $("start")?.addEventListener("click", () => void runAll());
   $("semrun")?.addEventListener("click", () => void runSemantic());
+  $("judgerun")?.addEventListener("click", () => void runJudge());
+  $("dljudge")?.addEventListener("click", () => {
+    const j = S.judge as Exclude<typeof S.judge, string | null>;
+    const label = new Map(S.ds!.cases.map((c) => [c.id, c.labels]));
+    download(`AI판정_${stamp()}.json`, JSON.stringify({ model: j.model, ms: Math.round(j.ms), judgments: j.judgments.map((x) => ({ ...x, gold: label.get(x.caseId)?.includes(x.id) ?? null })) }, null, 2), "application/json");
+  });
 
   $("dlcomp")?.addEventListener("click", () => {
     const c = competencyEval(S.ds!.cases);
@@ -288,7 +328,7 @@ async function runAll() {
           const ms = performance.now() - t;
           const sc = scoreAiAnswer(raw, c.resume, fallback);
           S.runs.push({ caseId: c.id, model: id, run, ms, raw, ...sc });
-          say(`${id} · ${c.id} #${run}: ${sec(ms)}, AI 질문 ${sc.aiCount}/3`);
+          say(`${id}, ${c.id} #${run}: ${sec(ms)}, AI 질문 ${sc.aiCount}/3`);
         }
       }
     } catch (e) {
@@ -319,7 +359,7 @@ async function init() {
     `CPU 스레드 ${navigator.hardwareConcurrency ?? "?"}`,
     nav.deviceMemory ? `메모리 약 ${nav.deviceMemory}GB 이상` : "",
     navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/)?.[0] ?? "",
-  ].filter(Boolean).join(" · ");
+  ].filter(Boolean).join(", ");
   try {
     const { prebuiltAppConfig } = await import("@mlc-ai/web-llm");
     S.available = new Set(prebuiltAppConfig.model_list.map((m) => m.model_id));

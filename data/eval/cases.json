@@ -2,15 +2,15 @@
   "note": "모두 지어낸 가짜 자료입니다. 실제 사람·회사와 관계없습니다. labels(자소서에 근거가 있는 역량)와 facts는 만든 사람이 붙인 1차 정답이라, 검증 전에 다른 사람이 따로 다시 붙여 비교해야 합니다.",
   "competencyIds": {
     "communication": "의사소통",
-    "math": "수리·데이터",
+    "math": "수리와 데이터",
     "problem": "문제해결",
     "self": "자기개발",
     "resource": "자원관리",
-    "interpersonal": "대인관계·협업",
+    "interpersonal": "대인관계와 협업",
     "information": "정보 활용",
-    "technology": "기술·전문성",
+    "technology": "기술과 전문성",
     "organization": "조직이해",
-    "ethics": "직업윤리·책임감"
+    "ethics": "직업윤리와 책임감"
   },
   "postings": [
     {

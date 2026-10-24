@@ -1,4 +1,5 @@
 node_modules/
 dist/
 public/mediapipe/
+public/mediapipe-audio/
 public/eval/

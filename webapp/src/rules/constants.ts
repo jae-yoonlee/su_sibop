@@ -54,6 +54,16 @@ export const VAD_OFF_HOLD_SEC = 0.3; // 이만큼 이어서 낮아야 말 끝남
 export const VAD_STALE_SEC = 1; // 판정이 이보다 오래 안 오면 음량 판정으로 대신
 export const SILENCE_RESET_SEC = 0.3; // 침묵을 끊으려면 이만큼 이어서 말해야 함 (짧은 '음'·기침 한 번은 침묵 유지)
 
+// ── 남의 목소리 거르기 [가설] 2026-10-23 사용자 요청 "소음이랑 구분". Silero는 TV·옆 사람 말소리도 말소리로 본다.
+// 말소리가 들리는데 화면 속 입(jawOpen)이 거의 안 움직이면 내 말이 아니라고 보고, 침묵을 끊지 않고 소음으로 센다.
+export const MOUTH_WINDOW_SEC = 0.8; // 최근 이 시간 동안 입 벌림 점수의 (최대-최소)가
+export const MOUTH_MOVE_MIN = 0.04; // 이보다 작으면 입이 안 움직인 것
+export const MOUTH_STALE_SEC = 0.5; // 얼굴 프레임이 이보다 오래 없으면 입 판정 안 함 (음성만으로 판정)
+
+// ── 소리 종류 [가설] YAMNet(구글 공개 소리 분류 모델, 521종) 결과를 몇 묶음으로
+export const SOUND_EVERY_SEC = 1.0; // 내가 말하지 않는 동안 1초마다 분류
+export const SOUND_MIN_SCORE = 0.3; // 1위 점수가 이보다 낮으면 '모름'
+
 // ── 음성 규칙 [voice_rules.py]
 export const STUCK_SEC = 5.0; // 이만큼 말이 없으면 침묵 경고 (Python 4초 → 사용자 요청 5초)
 export const QUIET_WINDOW = 10.0;

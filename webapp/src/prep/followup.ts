@@ -26,9 +26,9 @@ export const ISSUE_LABELS: Record<IssueName, string> = {
   missing_fact: "자기소개서에 적은 숫자를 말하지 않음",
   no_result: "결과를 말하지 않음",
   no_role: "본인이 한 일을 말하지 않음",
-  team_heavy: "'우리·팀' 위주라 본인 기여 비중이 불분명",
+  team_heavy: "'우리'나 '팀' 위주라 본인이 한 일이 흐릿함",
   vague: "모호한 표현",
-  generic: "특별한 빈 곳 없음 → 답변 한 부분을 더 깊게",
+  generic: "답변 한 부분을 더 깊게",
   no_text: "답변을 받아쓰지 못함",
 };
 

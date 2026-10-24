@@ -2,7 +2,7 @@
 import {
   BLOCK_SEC, MIN_ON_SEC, NOISE_HOLD_SEC, NOISE_MAX_DB, NOISE_PERCENTILE, NOISE_RISE_DB, NOISE_SETUP_SEC, NOISE_WINDOW_SEC,
   OFF_HOLD_SEC, OFF_RATIO, ON_RATIO, QUIET_HOLD, QUIET_MIN_SPEECH, QUIET_OFF_DB, QUIET_ON_DB, QUIET_WINDOW,
-  SILENCE_RESET_SEC, SPEECH_FLOOR_BELOW_VOICE_DB, STUCK_SEC, VAD_OFF_HOLD_SEC, VAD_OFF_P, VAD_ON_P, VAD_STALE_SEC, VOICE_END_SILENCE_SEC,
+  MOUTH_MOVE_MIN, SILENCE_RESET_SEC, SPEECH_FLOOR_BELOW_VOICE_DB, STUCK_SEC, VAD_OFF_HOLD_SEC, VAD_OFF_P, VAD_ON_P, VAD_STALE_SEC, VOICE_END_SILENCE_SEC,
   VOICE_MAX_DB, VOICE_MIN_DB, VOICE_SETUP_SEC,
 } from "./constants";
 import { EventTracker } from "./events";
@@ -60,7 +60,7 @@ export class SileroGate {
 export type VoiceSetupStep = "noise" | "voice" | "done";
 export type VoiceSetupMessage = "noise" | "noise_high" | "voice" | "voice_low" | "voice_high" | "done";
 export const VOICE_SETUP_MESSAGES: Record<VoiceSetupMessage, string> = {
-  noise: "조용히 잠깐만 계세요. 주변 소리를 재고 있어요",
+  noise: "주변 소리를 재고 있어요. 스피커 소리는 끄고 잠깐 조용히 계세요",
   noise_high: "소리가 들려서 다시 재요. 말하지 말고 조용히 계세요",
   voice: "아래 문장을 평소 면접 목소리로 끝까지 읽어 주세요. 다 읽고 잠깐 멈추면 넘어가요",
   voice_low: "목소리가 작아요. 조금만 크게 다시 읽어 주세요",
@@ -151,6 +151,8 @@ export class VoiceRules {
   /** 이번 답변에서 Silero로 판정한 블록 비율 (나머지는 음량 판정) */
   sileroBlocks = 0;
   blocks = 0;
+  /** 말소리는 들렸지만 입이 안 움직여서 내 말로 안 본 시간(초) */
+  otherVoiceSec = 0;
 
   /** start: 답변 시작 시각. 답변 시작부터 말이 없어도 침묵으로 센다 (질문 읽는 30초가 생각할 시간). */
   constructor(private base: { noiseRms: number; noiseDb: number; voiceDb: number }, start: number) {
@@ -158,16 +160,23 @@ export class VoiceRules {
     this.silenceSince = start;
   }
 
-  /** vad: Silero의 말함 판정 (없으면 null → 음량만으로 판정). 큰 소음은 음량이 커도 Silero가 말이 아니라고 본다. */
-  update(t: number, rms: number, vad: boolean | null = null): VoiceAlert[] {
+  /** vad: Silero의 말함 판정 (없으면 null → 음량만으로 판정). 큰 소음은 음량이 커도 Silero가 말이 아니라고 본다.
+   *  mouth: 최근 입 움직임 폭 (얼굴이 없으면 null). 말소리인데 입이 안 움직이면 남의 목소리로 본다. */
+  update(t: number, rms: number, vad: boolean | null = null, mouth: number | null = null): VoiceAlert[] {
     const dt = this.lastT === null ? 0 : Math.max(0, t - this.lastT);
     this.lastT = t;
     const db = toDb(rms);
     const energy = this.vad.feed(t, rms); // 모델이 끊겼다 돌아와도 바로 이어 쓸 수 있게 항상 돌린다
     this.blocks++;
-    if (vad === null) this.speaking = energy;
+    const voiced = vad ?? energy;
+    const other = voiced && mouth !== null && mouth < MOUTH_MOVE_MIN;
+    if (vad !== null) this.sileroBlocks++;
+    if (other) {
+      // 침묵을 끊지 않고, 바닥 소음 계산에는 넣는다
+      this.otherVoiceSec += dt;
+      [this.speaking, this.vadOnSince, vad] = [false, null, false];
+    } else if (vad === null) this.speaking = energy;
     else {
-      this.sileroBlocks++;
       // 말소리이면서 내 목소리보다 20dB 넘게 작지 않아야 (멀리서 들리는 말소리 제외). 0.3초 이어져야 침묵이 끊김.
       const on = vad && db > this.base.voiceDb - SPEECH_FLOOR_BELOW_VOICE_DB;
       this.vadOnSince = on ? (this.vadOnSince ?? t) : null;

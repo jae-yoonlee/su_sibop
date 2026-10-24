@@ -121,7 +121,11 @@ export function jsonAsker(schema: string, maxTokens: number): ((prompt: string) 
 /** 역량 판정용: 한 단어(yes/no)만 만들고 그 자리의 후보 확률을 읽는다. 모델이 아직 준비 안 됐으면 null */
 export function yesNoAsker(): YesNoAsk | null {
   if (!engine || llmState.kind !== "ready") return null;
-  const e = engine;
+  return yesNoAskerFor(engine);
+}
+
+/** 검증 페이지에서 판정 모델만 바꿔 볼 때도 같은 설정 */
+export function yesNoAskerFor(e: WebWorkerMLCEngine): YesNoAsk {
   return async (messages) => {
     const res = await e.chat.completions.create({
       messages,

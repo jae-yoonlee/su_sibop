@@ -3,7 +3,7 @@
 import "../styles.css";
 import "./eval.css";
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
-import { createEngine, currentModel, generateQuestions, preloadLlm, yesNoAsker } from "../prep/llm";
+import { createEngine, currentModel, generateQuestions, preloadLlm, yesNoAsker, yesNoAskerFor } from "../prep/llm";
 import { judgeIds, type Judgment } from "../prep/judge";
 import { COMPETENCIES } from "../prep/competency";
 const COMPETENCY_IDS = COMPETENCIES.map((c) => c.id);
@@ -22,6 +22,7 @@ const MODELS = [
   { base: "Qwen3.5-0.8B", note: "약 1.6GB, 새 세대 소형" },
   { base: "Qwen3.5-2B", note: "약 2.2GB, 지금 기본값의 유력 대체" },
   { base: "Qwen3-4B", note: "약 3.4GB, 품질 상한 확인용" },
+  { base: "Qwen3.5-4B", note: "약 3.9GB, 새 세대 중형" },
 ];
 
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -43,6 +44,7 @@ const S = {
   loadMs: {} as Record<string, number>,
   errors: {} as Record<string, string>,
   sem: null as null | "running" | { found: Map<string, string[]>; mode: "model" | "fallback"; ms: number }, // 뜻 비교 포함 결과
+  judgeModel: "", // 비우면 앱 기본 모델
   judge: null as null | string | { found: Map<string, string[]>; judgments: (Judgment & { caseId: string })[]; model: string; ms: number }, // AI 판정 포함 결과 (문자열 = 진행 상황)
   scored: null as ReturnType<typeof scoreSheets> | null,
   scoreErr: "",
@@ -79,7 +81,8 @@ function methodsHtml() {
     <table><thead><tr><th>방식</th><th>본 절반 정확도</th><th>본 절반 재현율</th><th>안 본 절반 정확도</th><th>안 본 절반 재현율</th></tr></thead><tbody>
     ${rows.map(([name, f, m]) => `<tr><td>${name}</td>${cell(dev, f, m)}${cell(test, f, m)}</tr>`).join("")}
     </tbody></table>
-    ${judge ? `<p class="muted">AI 판정 ${judge.judgments.length}문장, ${sec(judge.ms)} <button class="btn-primary" id="dljudge">AI 판정 원본 JSON</button></p>` : `<button class="btn-green" id="judgerun" ${typeof S.judge === "string" ? "disabled" : ""}>${typeof S.judge === "string" ? esc(S.judge) : "애매한 문장 AI 판정까지 측정"}</button> `}
+    ${judge ? `<p class="muted">AI 판정 ${judge.judgments.length}문장, ${sec(judge.ms)} <button class="btn-primary" id="dljudge">AI 판정 원본 JSON</button></p>` : `<label>판정 모델 <select id="judgeModel" ${typeof S.judge === "string" ? "disabled" : ""}><option value="">앱 기본 모델</option>${MODELS.filter((m) => S.available.has(modelId(m.base))).map((m) => `<option value="${m.base}" ${S.judgeModel === m.base ? "selected" : ""}>${m.base} (${m.note.split(",")[0]})</option>`).join("")}</select></label>
+      <button class="btn-green" id="judgerun" ${typeof S.judge === "string" ? "disabled" : ""}>${typeof S.judge === "string" ? esc(S.judge) : "애매한 문장 AI 판정까지 측정"}</button> `}
     ${sem ? `<p class="muted">뜻 비교 ${sec(sem.ms)}${sem.mode === "fallback" ? `, 모델 오류: ${esc(embedError || "알 수 없음")}` : ""}</p>` : `<button class="btn-green" id="semrun" ${S.sem === "running" ? "disabled" : ""}>${S.sem === "running" ? "뜻 비교 중… (처음엔 모델 약 150MB 받음)" : "뜻 비교까지 측정"}</button>`}`;
 }
 
@@ -102,8 +105,21 @@ async function runSemantic() {
 async function runJudge() {
   S.judge = "AI 불러오는 중…";
   render();
-  const engine = await preloadLlm();
-  const ask = engine && yesNoAsker();
+  let ask = null;
+  let model = "";
+  let own: Awaited<ReturnType<typeof createEngine>> | null = null; // 판정용으로 따로 띄운 모델 (끝나면 내림)
+  if (S.judgeModel) {
+    model = modelId(S.judgeModel);
+    const e = await createEngine(model, (r) => {
+      S.judge = `${S.judgeModel} 불러오는 중… ${Math.round(r.progress * 100)}%`;
+      render();
+    }).catch((err) => (alert(`모델을 못 불러왔어요: ${(err as Error).message}`), null));
+    own = e;
+    ask = e && yesNoAskerFor(e);
+  } else {
+    ask = (await preloadLlm()) && yesNoAsker();
+    model = currentModel();
+  }
   if (!ask) {
     S.judge = null;
     alert("이 PC에서는 AI를 쓸 수 없어요 (WebGPU 필요)");
@@ -121,7 +137,8 @@ async function runJudge() {
     judgments.push(...js.map((j) => ({ ...j, caseId: c.id })));
     found.set(c.id, [...ids, ...new Set(js.filter((j) => j.yes).map((j) => j.id))]);
   }
-  S.judge = { found, judgments, model: currentModel(), ms: performance.now() - t0 };
+  S.judge = { found, judgments, model, ms: performance.now() - t0 };
+  await own?.unload();
   render();
 }
 
@@ -232,6 +249,7 @@ function bind() {
   $("start")?.addEventListener("click", () => void runAll());
   $("semrun")?.addEventListener("click", () => void runSemantic());
   $("judgerun")?.addEventListener("click", () => void runJudge());
+  $("judgeModel")?.addEventListener("change", (e) => (S.judgeModel = (e.target as HTMLSelectElement).value));
   $("dljudge")?.addEventListener("click", () => {
     const j = S.judge as Exclude<typeof S.judge, string | null>;
     const label = new Map(S.ds!.cases.map((c) => [c.id, c.labels]));

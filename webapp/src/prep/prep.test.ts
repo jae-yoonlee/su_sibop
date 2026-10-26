@@ -30,10 +30,10 @@ describe("역량 규칙", () => {
     expect(findCompetencies("동료와 사이좋게 지냈으면 좋겠어요").map((h) => h.id)).toContain("interpersonal");
   });
 
-  it("자소서 대조: 협업·책임감(맡았·담당)은 근거 있음, 의사소통은 근거 없음", () => {
+  it("자소서 대조: 협업은 근거 있음, '담당'만으로는 책임감 아님 (2026-10-26), 의사소통은 근거 없음", () => {
     const cov = checkResume(requiredFromRules(POSTING), RESUME);
     expect(cov.find((c) => c.name === "대인관계와 협업")!.found).toContain("협업");
-    expect(cov.find((c) => c.name === "직업윤리와 책임감")!.found).toContain("담당");
+    expect(cov.find((c) => c.name === "직업윤리와 책임감")!.found).not.toContain("담당");
     expect(cov.find((c) => c.name === "의사소통")!.found).toEqual([]);
   });
 });
@@ -141,8 +141,14 @@ describe("NCS 하위능력 문맥 규칙 (2026-10-23)", () => {
   it("인적자원관리: 근무표를 짬", () => {
     expect(ids("봉사자 12명의 근무표를 짜는 일을 맡았습니다.")).toContain("resource");
   });
-  it("기초연산: 매출과 현금을 맞춤", () => {
-    expect(ids("하루 매출과 현금이 맞지 않는 날을 정산하며 찾았습니다.")).toContain("math");
+  it("기초연산: 매출과 현금을 맞춤 (혼자로는 약하고, 표로 나눠 보면 인정)", () => {
+    expect(ids("하루 매출과 현금이 맞지 않는 날을 정산하며 찾았습니다.")).not.toContain("math");
+    expect(ids("하루 매출과 현금이 맞지 않는 날을 정산하며 찾았습니다. 요일별로 나눠 표를 만들었습니다.")).toContain("math");
+  });
+  it("결과를 숫자로 말한 것만으로는 수리가 아님 (2026-10-26 기준)", () => {
+    expect(ids("마감 시간이 하루 40분에서 15분으로 줄었습니다. 만족도가 3.2점에서 4.4점으로 올랐고 평균 대기도 줄었습니다.")).not.toContain("math");
+    expect(ids("PostgreSQL로 데이터베이스를 설계했습니다.")).not.toContain("math");
+    expect(ids("주문 기록 12만 건을 분석해 반품이 많은 시간대를 찾았습니다.")).toContain("math");
   });
   it("단어만 있으면 여전히 인정 안 함", () => {
     expect(ids("저는 근무표라는 말을 좋아합니다.")).not.toContain("resource");
@@ -158,5 +164,19 @@ describe("말로 한 답변 표현 (2026-10-24)", () => {
   });
   it("관계없는 말에는 안 걸림", () => {
     expect(ids("집이 가까워서 이 회사에 지원했습니다.")).toEqual([]);
+  });
+});
+
+describe("김여진 라벨 기준 (2026-10-26)", () => {
+  const ids = (t: string) => findCompetencies(t, true).map((h) => h.id);
+  it("팀원과 코드 리뷰만 한 것은 대인관계가 아님", () => {
+    expect(ids("팀원 3명과 매주 코드 리뷰를 하면서 서로의 코드를 읽는 습관을 들였습니다.")).not.toContain("interpersonal");
+  });
+  it("정해진 절차대로 처리하고 담당자께 확인 → 조직이해", () => {
+    expect(ids("개인정보가 담긴 서류는 정해진 절차대로만 처리하고, 헷갈리면 담당 주무관께 확인받았습니다.")).toContain("organization");
+    expect(ids("손님이 많은 매장에서 매출을 올렸습니다.")).not.toContain("organization");
+  });
+  it("알아챈 것 → 그래서 한 행동 → 결과 = 문제해결", () => {
+    expect(ids("서류가 빠져 다시 오는 사람이 많다는 것을 알게 되었습니다. 그래서 안내문을 만들어 붙였고, 재방문이 줄었습니다.")).toContain("problem");
   });
 });

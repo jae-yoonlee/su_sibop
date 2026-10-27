@@ -17,7 +17,7 @@ import { checkFacts, extractFacts, RECHECK_SCHEMA, type FactResult } from "./rep
 import { answerCompetency } from "./report/answerComp";
 import { FEEDBACK_SCHEMA, makeFeedback, type Feedback } from "./report/feedback";
 import { preloadEmbedder } from "./report/embed";
-import { currentModel, followupAsker, jsonAsker, yesNoAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
+import { currentModel, followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
 import { ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
 import { runPrep, type PrepState, type StepState } from "./prep/pipeline";
 
@@ -357,7 +357,7 @@ async function runAnswerComp() {
   S.answerComp = "running";
   if (S.phase === "result") render();
   try {
-    S.answerComp = await answerCompetency(S.prep.coverage, S.transcripts, yesNoAsker());
+    S.answerComp = await answerCompetency(S.prep.coverage, S.transcripts); // AI 판정은 검증 페이지에서만 (2026-10-26)
   } catch {
     S.answerComp = { rows: [], judgments: [] };
   }

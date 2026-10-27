@@ -1,8 +1,8 @@
 // 자료 분석: 규칙 → (Gemini) 필요역량 → 자소서 대조 → 브라우저 안 AI 질문 3개. 카메라 세팅과 동시에 돈다.
 import { checkResume, findCompetencies, requiredFromRules, type Coverage, type Hit } from "./competency";
 import { summarizeRequired } from "./gemini";
-import { aiQuestions, preloadLlm, yesNoAsker } from "./llm";
-import { addJudge, type Judgment } from "./judge";
+import { aiQuestions, preloadLlm } from "./llm";
+import type { Judgment } from "./judge";
 import { addSemantic, type SemScore } from "./semantic";
 import { preloadEmbedder } from "../report/embed";
 import { parseAiQuestions, ruleQuestions, type Question } from "./questions";
@@ -112,16 +112,8 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
       const engine = await preloadLlm();
       if (!engine) throw new Error("이 PC에서는 AI를 쓸 수 없어 규칙 질문을 써요");
       s.timings.model = sec();
-      // 3-2) 규칙이 약하게만 잡은 문장을 AI에게 묻기
-      const ask = yesNoAsker();
-      if (ask) {
-        const j = await addJudge(s.coverage, input.resume, ask, s.semantic);
-        s.coverage = j.coverage;
-        s.judgments = j.judgments;
-        if (j.added) s.note.resume = [s.note.resume, `AI 판정으로 근거 ${j.added}개 더 찾음`].filter(Boolean).join(", ");
-        s.timings.judge = sec();
-        emit();
-      }
+      // 애매한 문장 AI 판정은 앱에서 뺐다 (2026-10-26 사용자 결정): AI Hub 조정용 자료에서 1.7B는 정답을 가르는 힘(AUC) 0.67,
+      // 3.5-4B도 0.74로 미리 정한 기준 0.8에 못 미쳤다. 비교는 검증 페이지(eval)에서만 한다.
       const fallback = ruleQuestions(input.resume, s.coverage);
       let { questions, aiCount } = parseAiQuestions(await aiQuestions(input.resume, s.coverage), input.resume, fallback);
       if (aiCount < 3) {

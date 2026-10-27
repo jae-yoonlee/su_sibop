@@ -10,10 +10,9 @@ on:
     paths: ["webapp/**", "data/eval/**", ".github/workflows/webapp-pages.yml"]
   workflow_dispatch:
 
+# 기본은 읽기만. 배포 권한은 deploy 작업에만 준다 (PR 빌드가 배포 권한을 갖지 않게)
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: webapp-pages-${{ github.ref }}
@@ -27,6 +26,8 @@ jobs:
         working-directory: webapp
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -46,6 +47,9 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -1,5 +1,6 @@
 // 시선 측정 페이지 (팀 내부용). 화면에 "여기를 보세요"를 차례로 띄우고, 그동안의 얼굴 각도와 눈동자 값을 기록해
 // 딴 곳 보기 규칙이 얼마나 맞는지 잰다. 영상은 저장하지 않고 숫자만 남긴다.
+import { esc } from "../safe";
 import "../styles.css";
 import { createLandmarker, openCamera, runFaceLoop, type FrameResult } from "../media/camera";
 import { LOOK_EYE_TOL, LOOK_HEAD_DEG } from "../rules/constants";
@@ -28,7 +29,6 @@ const S = {
 };
 
 const pct = (v: number) => (Number.isFinite(v) ? `${Math.round(v * 100)}%` : "-");
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 function render() {
   if (S.phase === "run") return renderCue();

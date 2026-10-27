@@ -146,8 +146,13 @@ function introHtml() {
   <div class="page">
     <nav class="nav"><div class="brand">면접<b>.</b>코치</div><span class="chip" id="llm-chip">${llmChip(llmState)}</span></nav>
     <div class="wrap">
-      <h1 class="display-xl">면접,<br/>실전처럼.</h1>
-      <p class="lead">채용공고와 자소서를 넣으면 그 회사에 맞는 질문으로 실제 면접처럼 연습할 수 있어요.</p>
+      <section class="hero">
+        <div class="hero-text">
+          <h1 class="display-xl">면접,<br/>실전처럼.</h1>
+          <p class="lead">채용공고와 자소서를 넣으면 그 회사에 맞는 질문으로 실제 면접처럼 연습할 수 있어요.</p>
+        </div>
+        <div class="hero-art" aria-hidden="true"><i class="o1"></i><i class="o2"></i><i class="o3"></i><i class="o4"></i></div>
+      </section>
       <div class="inputs">
         <label class="field"><span class="field-h">희망 회사 채용공고</span>
           <span class="field-sub">자격요건, 우대사항, 인재상을 그대로 붙여 넣어 주세요</span>

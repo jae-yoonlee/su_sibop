@@ -7,6 +7,7 @@ import {
 } from "./constants";
 import { EventTracker } from "./events";
 import { median, quantile, toDb } from "./stats";
+import { SyllableCounter } from "./pace";
 
 /** 소음의 몇 배인지로 말함/안 말함을 정한다. noise는 세팅 때 잰 RMS.
  *  voiceDb(세팅 때 잰 내 목소리)가 있으면 그보다 20dB 넘게 작은 소리(숨소리·잡음)는 말로 보지 않는다. */
@@ -81,9 +82,22 @@ export class VoiceSetup {
   private silentSince: number | null = null;
   private vad: EnergyVad | null = null;
   attempt = 0; // 문장 읽기 시도 번호 (다시 읽을 때마다 +1, 받아쓰기도 같이 새로 시작)
+  // 문장 읽기 동안 센 음절과 말한 시간 → 말 빠르기 기준 (pace.ts paceBase)
+  private syl = new SyllableCounter();
+  private sylSpeech = 0;
+  readSyllables = 0;
+  readSpeechSec = 0;
 
   get active() {
     return this.step !== "done";
+  }
+
+  /** 16kHz 소리 조각마다 (문장 읽기 중에만 씀). voiced: Silero 판정, 없으면 음량 판정 */
+  feedFrame(frame: Float32Array, voiced: boolean | null) {
+    if (this.step !== "voice") return;
+    const v = voiced ?? this.vad?.speaking ?? false;
+    this.syl.push(frame, v);
+    if (v) this.sylSpeech += frame.length / 16000;
   }
 
   feed(t: number, rms: number) {
@@ -118,6 +132,8 @@ export class VoiceSetup {
     const db = median(this.spoken);
     this.spoken = [];
     this.silentSince = null;
+    [this.readSyllables, this.readSpeechSec] = [this.syl.count, this.sylSpeech];
+    [this.syl, this.sylSpeech] = [new SyllableCounter(), 0];
     if (db < VOICE_MIN_DB) {
       this.message = "voice_low";
       this.attempt++;

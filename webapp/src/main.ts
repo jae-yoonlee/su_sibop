@@ -15,6 +15,7 @@ import { STATUS_ALERTS } from "./rules/gate";
 import { ALERT_LABELS, ALERT_PROBLEMS, AnswerCoach, type AnswerStats } from "./rules/session";
 import { toDb } from "./rules/stats";
 import { SileroGate, VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
+import { hangulSyllables, paceBase } from "./rules/pace";
 import { checkFacts, extractFacts, RECHECK_SCHEMA, type FactResult } from "./report/facts";
 import { answerCompetency } from "./report/answerComp";
 import { FEEDBACK_SCHEMA, makeFeedback, type Feedback } from "./report/feedback";
@@ -343,6 +344,7 @@ function resultHtml() {
       { face: S.delegate, fps: Math.round(S.fps), mic: { autoGainControl: settings.autoGainControl, noiseSuppression: settings.noiseSuppression, sampleRate: settings.sampleRate },
         prep: S.prep && { timings: S.prep.timings, requiredBy: S.prep.requiredBy, questionsBy: S.prep.questionsBy, llm: llmState.kind, notes: S.prep.note },
         vad: { mode: S.vad?.mode, error: S.vad?.error, sileroShare: S.results.map((r) => r.vadShare) },
+        pace: { read: { syllables: S.voice.readSyllables, speechS: Math.round(S.voice.readSpeechSec * 10) / 10 }, answers: S.results.map((r) => r.pace) },
         noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), stt: { mode: S.sttMode, check: S.sttCheck }, camera: S.cam.warnings, csp: cspBlocked, ua: navigator.userAgent }, null, 2))}</pre></details>` : ""}
   </div></div>`;
 }
@@ -634,7 +636,7 @@ function go(phase: Phase) {
   if (phase === "answer") {
     const base = { box: S.cam.baseBox!, gazeStd: S.cam.baseGazeStd, targets: S.cam.lookTargets() };
     const v = S.voice;
-    S.coach = new AnswerCoach(base, { noiseRms: v.noiseRms!, noiseDb: v.noiseDb!, voiceDb: v.voiceDb! }, S.phaseAt, curQ());
+    S.coach = new AnswerCoach(base, { noiseRms: v.noiseRms!, noiseDb: v.noiseDb!, voiceDb: v.voiceDb!, pace: paceBase(v.readSyllables, v.readSpeechSec, hangulSyllables(READ_SENTENCE)) }, S.phaseAt, curQ());
     startStt();
     startRecording();
     void preloadEmbedder(); // 결과 화면 사실 대조용 뜻 비교 모델을 면접 중에 미리 받음
@@ -725,6 +727,7 @@ async function start() {
     S.vad = startVad((p) => S.gate.feed(now(), p), onVadMode);
     S.mic = await openMic(onRms, (frame) => {
       S.sound?.push(frame); // 말소리 판정기로 넘기면 버퍼가 옮겨지므로 먼저 복사
+      onSamples(frame);
       S.vad?.push(frame, now());
     });
     // 소리 종류 분류는 없어도 코칭이 되므로 기다리지 않고, 실패하면 조용히 뺀다
@@ -802,6 +805,13 @@ function onRms(rms: number) {
       S.soundAt = t;
     }
   }
+}
+
+/** 16kHz 소리 조각: 음절 세기 (문장 읽기 = 내 빠르기 기준, 답변 = 빠른 말 경고) */
+function onSamples(frame: Float32Array) {
+  const t = now();
+  if (S.phase === "setup" && !S.cam.active && S.voice.active) S.voice.feedFrame(frame, S.vad?.mode === "silero" ? S.gate.at(t) : null);
+  else if (S.phase === "answer") S.coach?.onSamples(t, frame);
 }
 
 const VAD_LABELS: Record<VadMode, string> = {

@@ -29,7 +29,9 @@ export const STT_ALTERNATIVES = 3;
 /** 자소서 단어 힌트 가중치 (명세 범위 0~10) [가설] */
 export const STT_PHRASE_BOOST = 5;
 /** 말소리 판정이 '말하는 중'인데 이만큼 받아쓰기 결과가 안 오면 받아쓰기를 다시 켠다 [가설] */
-export const STT_STALL_SEC = 4;
+export const STT_STALL_SEC = 6; // [가설] 4초 → 6초 (2026-10-27): 서버가 조금 늦게 줄 때까지 끊지 않게
+/** 멈춘 받아쓰기에 stop()을 부르고 이만큼 지나도 안 끝나면 abort() */
+const STOP_GRACE_SEC = 1.5;
 
 /** 후보 여러 개 중 자소서 단어(공백 무시)를 가장 많이 담은 것. 같으면 브라우저가 1순위로 준 것 */
 export function pickAlternative(alts: string[], hints: string[]): string {
@@ -63,30 +65,35 @@ export const STT_MODE_TEXT: Record<SttMode, string> = {
   cloud: "받아쓰기만 Google 서버를 거쳐요",
 };
 
+/** 받아쓰기 한 번 켠 것의 결과. 다시 켜도 앞 것의 늦게 온 결과가 제자리에 들어가도록 따로 모은다 */
+interface Segment {
+  finals: string[];
+  interim: string;
+}
+
 /** 말하는 동안 계속 받아쓴다. Chrome은 잠깐 조용하면 저절로 멈추므로 다시 켠다. */
 export class Transcriber {
   private rec: Rec | null = null;
-  private finals: string[] = [];
-  private interim = "";
+  private segs: Segment[] = [];
   private on = false;
   private live = false; // 지금 받아쓰기가 켜져 있는지 (Chrome이 저절로 끈 뒤 다시 켜기 전엔 false)
   private noPhrases = !PhraseCtor;
   private lastResult = 0;
+  private stopAt: number | null = null; // 멈춘 받아쓰기를 끝내려고 stop()을 부른 시각
   error = "";
   /** 말소리 판정을 보고 다시 켠 횟수 (결과 JSON에 남겨 효과 확인) */
   restarts = 0;
 
-  /** hints: 자소서의 프로젝트 이름, 숫자처럼 틀리기 쉬운 단어 */
+  /** hints: 자소서의 프로젝트 이름, 숫자, 영문 약어처럼 틀리기 쉬운 단어 */
   constructor(private mode: SttMode, private onChange?: (text: string) => void, private hints: string[] = []) {}
 
   get text() {
-    return [...this.finals, this.interim].join(" ").replace(/\s+/g, " ").trim();
+    return this.segs.flatMap((g) => [...g.finals, g.interim]).join(" ").replace(/\s+/g, " ").trim();
   }
 
   start() {
     if (!Ctor || this.mode === "none") return;
-    this.finals = [];
-    this.interim = "";
+    this.segs = [];
     this.error = "";
     this.on = true;
     this.open();
@@ -94,6 +101,8 @@ export class Transcriber {
 
   private open() {
     const r = new Ctor!();
+    const seg: Segment = { finals: [], interim: "" };
+    this.segs.push(seg);
     r.lang = "ko-KR";
     r.continuous = true;
     r.interimResults = true;
@@ -112,10 +121,10 @@ export class Transcriber {
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const res = e.results[i];
-        if (res.isFinal) this.finals.push(pickAlternative(Array.from(res, (a) => a.transcript.trim()), this.hints));
+        if (res.isFinal) seg.finals.push(pickAlternative(Array.from(res, (a) => a.transcript.trim()), this.hints));
         else interim += res[0].transcript;
       }
-      this.interim = interim.trim();
+      seg.interim = interim.trim();
       this.onChange?.(this.text);
     };
     r.onerror = (e) => {
@@ -124,13 +133,14 @@ export class Transcriber {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") this.on = false;
     };
     r.onend = () => {
-      if (this.rec !== r) return; // 다시 켜면서 버린 것
+      if (seg.interim) seg.finals.push(seg.interim); // 끊길 때 남은 중간 결과도 살린다
+      seg.interim = "";
+      if (this.rec !== r) return;
       this.live = false;
-      if (this.interim) this.finals.push(this.interim); // 끊길 때 남은 중간 결과도 살린다
-      this.interim = "";
       if (this.on) setTimeout(() => this.on && !this.live && this.open(), 100);
     };
     this.rec = r;
+    this.stopAt = null;
     this.lastResult = performance.now();
     try {
       r.start();
@@ -142,21 +152,32 @@ export class Transcriber {
 
   /** 말소리 판정(Silero)이 말하는 중이라고 할 때마다 부른다.
    *  Chrome이 조용할 때 받아쓰기를 저절로 끄고 다시 켜는 사이에 첫마디가 잘리고, 가끔 켜진 채 결과를 안 주므로
-   *  꺼져 있으면 바로 켜고, 말하는데 결과가 STT_STALL_SEC 넘게 없으면 다시 켠다. */
+   *  꺼져 있으면 바로 켜고, 말하는데 결과가 STT_STALL_SEC 넘게 없으면 다시 켠다.
+   *  2026-10-27 실사용: 다시 켠 횟수가 많았던 답변에서 말이 크게 빠졌다(41초 답변에 25어절). 예전엔 abort()로 버려서
+   *  서버가 처리 중이던 말까지 사라졌을 가능성이 커서, 이제 stop()으로 끝내 그때까지 들은 말의 결과를 받고
+   *  끝났다는 신호(onend)가 오면 다시 켠다. stop에도 STOP_GRACE_SEC 안에 안 끝나면 그때 abort. */
   speech() {
     if (!this.on || !Ctor) return;
     if (!this.live) {
       this.restarts++;
       return this.open();
     }
-    if (performance.now() - this.lastResult > STT_STALL_SEC * 1000) {
+    const now = performance.now();
+    if (this.stopAt !== null) {
+      if (now - this.stopAt > STOP_GRACE_SEC * 1000) {
+        this.stopAt = null;
+        this.rec?.abort();
+      }
+      return;
+    }
+    if (now - this.lastResult > STT_STALL_SEC * 1000) {
       this.restarts++;
-      const old = this.rec;
-      this.rec = null; // 버린 것의 onend는 무시
-      old?.abort();
-      if (this.interim) this.finals.push(this.interim);
-      this.interim = "";
-      this.open();
+      this.stopAt = now;
+      try {
+        this.rec?.stop();
+      } catch {
+        this.stopAt = null;
+      }
     }
   }
 

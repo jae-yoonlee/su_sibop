@@ -17,6 +17,7 @@ export interface FaceBox {
   cx: number; // 거울 화면 기준 가로 중심 (0=왼쪽)
   cy: number;
   w: number;
+  z?: number; // 카메라까지 거리 (얼굴 변환 행렬의 이동 성분, cm 안팎). 고개를 돌려도 거의 안 변해서 앞뒤 이동은 이걸로 본다
 }
 
 export interface Landmark {
@@ -32,6 +33,11 @@ export function matrixGetter(data: ArrayLike<number>): (r: number, c: number) =>
 }
 
 const deg = (rad: number) => (rad * 180) / Math.PI;
+
+/** 얼굴 변환 행렬의 이동 성분 z (카메라까지 거리). 폭은 고개를 돌리면 줄어들지만 이 값은 그대로다 */
+export function faceDepth(data: ArrayLike<number>): number {
+  return Math.abs(matrixGetter(data)(2, 3));
+}
 
 export function headAngles(data: ArrayLike<number>): { yaw: number; pitch: number; roll: number } {
   const m = matrixGetter(data);

@@ -18,6 +18,20 @@ export const ALERT_LABELS: Record<string, string> = {
   noise: "주변이 시끄러워요",
 };
 
+// 결과 화면·피드백용 이름: 조언이 아니라 무슨 문제였는지 (2026-10-27 사용자 요청 "시선을 한곳에 두세요 → 시선 분산")
+export const ALERT_PROBLEMS: Record<string, string> = {
+  away: "얼굴 벗어남",
+  turn: "고개 돌림",
+  down: "고개 숙임",
+  center: "화면 가운데 벗어남",
+  shift: "자리 이동",
+  look: "다른 곳 응시",
+  gaze: "시선 분산",
+  stuck: "말 끊김",
+  quiet: "작은 목소리",
+  noise: "주변 소음",
+};
+
 export interface AnswerStats {
   question: string;
   durationS: number;
@@ -99,7 +113,7 @@ export class AnswerCoach {
         const ev = events.filter((e) => e.name === name);
         return {
           name,
-          label: ALERT_LABELS[name],
+          label: ALERT_PROBLEMS[name],
           count: ev.length,
           seconds: Math.round(ev.reduce((a, e) => a + e.end - e.start, 0) * 10) / 10,
           shown: this.gate.log.filter((l) => l.name === name && l.outcome === "shown").length,

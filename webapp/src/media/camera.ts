@@ -1,6 +1,6 @@
 // 카메라 + MediaPipe Face Landmarker (브라우저 안에서 실행, 영상은 밖으로 나가지 않음)
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
-import { analyze, faceBox, type FaceBox, type FaceInfo } from "../rules/face";
+import { analyze, faceBox, faceDepth, type FaceBox, type FaceInfo } from "../rules/face";
 
 // 패키지와 같은 버전의 wasm을 빌드 때 public/mediapipe로 복사해 둠 (scripts/copy-wasm.mjs)
 const WASM_URL = `${import.meta.env.BASE_URL}mediapipe`;
@@ -63,7 +63,7 @@ export function runFaceLoop(video: HTMLVideoElement, lm: FaceLandmarker, onFrame
         const blend: Record<string, number> = {};
         for (const c of bs.categories) blend[c.categoryName] = c.score;
         info = analyze(mat.data, blend, pts);
-        box = faceBox(pts);
+        box = { ...faceBox(pts), z: faceDepth(mat.data) };
       }
       onFrame({ t: now / 1000, info, box, procMs });
     }

@@ -2,6 +2,7 @@
 import { FeedbackGate, type GateLog } from "./gate";
 import { PostureRules, type PostureBase } from "./postureRules";
 import { VoiceRules } from "./voice";
+import { PaceRule, SyllableCounter, type PaceBase } from "./pace";
 import type { FaceBox, FaceInfo } from "./face";
 import { MOUTH_STALE_SEC, MOUTH_WINDOW_SEC } from "./constants";
 
@@ -16,6 +17,7 @@ export const ALERT_LABELS: Record<string, string> = {
   stuck: "말을 이어 가 보세요",
   quiet: "조금 더 크게 말해 주세요",
   noise: "주변이 시끄러워요",
+  fast: "조금 천천히 말해 주세요",
 };
 
 // 결과 화면·피드백용 이름: 조언이 아니라 무슨 문제였는지 (2026-10-27 사용자 요청 "시선을 한곳에 두세요 → 시선 분산")
@@ -30,6 +32,7 @@ export const ALERT_PROBLEMS: Record<string, string> = {
   stuck: "말 끊김",
   quiet: "작은 목소리",
   noise: "주변 소음",
+  fast: "빠른 말",
 };
 
 export interface AnswerStats {
@@ -44,12 +47,14 @@ export interface AnswerStats {
   otherVoiceS: number; // 말소리는 들렸지만 입이 안 움직여 남의 소리로 본 시간(초)
   noiseKinds: Record<string, number>; // '주변 소음' 경고 중 들린 소리 종류별 초
   irisShare: number | null; // 눈동자 방향을 홍채 점으로 잰 프레임 비율 (나머지는 표정 점수)
+  pace: { sps: number | null; limit: number; syllables: number; speechS: number; base: PaceBase | null }; // 말 빠르기 (음절/초, 문장 읽기로 보정)
 }
 
 export interface VoiceBase {
   noiseRms: number;
   noiseDb: number;
   voiceDb: number;
+  pace?: PaceBase | null; // 문장 읽기 때 잰 말 빠르기
 }
 
 export class AnswerCoach {
@@ -59,6 +64,9 @@ export class AnswerCoach {
   shown: string[] = [];
   private faceActive: string[] = [];
   private voiceActive: string[] = [];
+  private paceActive: string[] = [];
+  readonly pace: PaceRule;
+  private syl = new SyllableCounter();
   private jaw: { t: number; v: number }[] = [];
   private frames = 0;
   private irisFrames = 0;
@@ -69,6 +77,7 @@ export class AnswerCoach {
   constructor(posture: PostureBase, voice: VoiceBase | null, private start: number, private question: string) {
     this.posture = new PostureRules(posture);
     this.voice = voice ? new VoiceRules(voice, start) : null;
+    this.pace = new PaceRule(voice?.pace ?? null);
   }
 
   /** 카메라 프레임마다 */
@@ -80,12 +89,19 @@ export class AnswerCoach {
     }
     while (this.jaw.length && t - this.jaw[0].t > MOUTH_WINDOW_SEC) this.jaw.shift();
     this.faceActive = this.posture.update(t, angles, info, box);
-    this.shown = this.gate.update(t, [...this.faceActive, ...this.voiceActive]);
+    this.shown = this.gate.update(t, [...this.faceActive, ...this.voiceActive, ...this.paceActive]);
   }
 
   /** 마이크 30ms 블록마다 */
   onAudio(t: number, rms: number, vad: boolean | null = null) {
     if (this.voice) this.voiceActive = this.voice.update(t, rms, vad, this.mouthMove(t));
+  }
+
+  /** 16kHz 소리 조각(512샘플)마다: 음절을 세고 말 빠르기를 잰다. '말함'은 음성 규칙의 판정(남의 목소리 제외)을 따른다 */
+  onSamples(t: number, frame: Float32Array) {
+    const voiced = this.voice?.speaking ?? false;
+    const fast = this.pace.update(t, frame.length / 16000, voiced, this.syl.push(frame, voiced));
+    this.paceActive = fast ? ["fast"] : [];
   }
 
   /** 최근 입 벌림 점수의 (최대-최소). 얼굴 프레임이 끊겼거나 모자라면 null */
@@ -106,8 +122,9 @@ export class AnswerCoach {
   finish(t: number): AnswerStats {
     this.posture.tracker.finish(t);
     this.voice?.tracker.finish(t);
+    this.pace.tracker.finish(t);
     this.gate.finish(t);
-    const events = [...this.posture.tracker.events, ...(this.voice?.tracker.events ?? [])];
+    const events = [...this.posture.tracker.events, ...(this.voice?.tracker.events ?? []), ...this.pace.tracker.events];
     const alerts = Object.keys(ALERT_LABELS)
       .map((name) => {
         const ev = events.filter((e) => e.name === name);
@@ -133,6 +150,13 @@ export class AnswerCoach {
       otherVoiceS: Math.round((this.voice?.otherVoiceSec ?? 0) * 10) / 10,
       noiseKinds: this.noiseKinds,
       irisShare: this.frames ? Math.round((this.irisFrames / this.frames) * 100) / 100 : null,
+      pace: {
+        sps: this.pace.typicalSps === null ? null : Math.round(this.pace.typicalSps * 100) / 100,
+        limit: Math.round(this.pace.limit * 100) / 100,
+        syllables: this.pace.syllables,
+        speechS: Math.round(this.pace.speechSec * 10) / 10,
+        base: this.pace.base,
+      },
       vadShare: this.voice?.blocks ? Math.round((this.voice.sileroBlocks / this.voice.blocks) * 100) / 100 : null,
     };
   }

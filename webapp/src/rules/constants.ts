@@ -78,6 +78,25 @@ export const NOISE_PERCENTILE = 0.1; // 하위 10% 값을 '바닥 소음'으로 
 export const NOISE_RISE_DB = 10.0; // 세팅 때보다 이만큼 커지면
 export const NOISE_HOLD_SEC = 3.0; // 이 시간 이어질 때 경고
 
+// ── 빠른 말 [가설] 2026-10-27 사용자 요청 "음절 방식". 여러 대역에서 함께 솟는 소리 = 음절 (Wang & Narayanan 2007 방식을 실시간으로)
+// 아래 6개는 FLEURS 한국어 낭독 절반(tune)으로 고른 값. 낭독이라 실제 면접 말투에서는 다시 재야 함
+export const SYL_BANDS = 8; // 250~4000Hz를 8개 대역으로
+export const SYL_LOW_HZ = 250;
+export const SYL_HIGH_HZ = 4000;
+export const SYL_HOP_SEC = 0.01; // 10ms마다
+export const SYL_TEMPORAL = 3; // 대역마다 최근 30ms 기하평균
+export const SYL_PROM_STD = 0.4; // 앞뒤 골짜기보다 (최근 점수 표준편차 × 0.4)만큼 높아야 음절
+export const SYL_MIN_GAP_SEC = 0.05; // 음절 사이 최소 간격
+export const SYL_STD_SEC = 3.0; // 표준편차는 최근 3초로
+export const PACE_WINDOW_SEC = 8.0; // 최근 이 시간 동안의
+export const PACE_MIN_SPEECH_SEC = 4.0; // 말한 시간이 이만큼은 돼야 빠르기를 잰다
+export const FAST_RATIO = 1.2; // 문장 읽기 때 내 빠르기의 이 배수 넘게 빨라지고
+export const FAST_MIN_SPS = 5.5; // 이 빠르기(음절/초)도 넘어야 경고 (원래 느린 사람이 보통 빠르기로 말할 때는 안 띄움)
+export const FAST_ABS_SPS = 6.5; // 기준을 못 쟀을 때 쓰는 고정 기준
+export const FAST_HOLD_SEC = 3.0; // 이 시간 이어지면 경고
+export const FAST_OFF_RATIO = 0.9; // 기준의 이 배수 아래로 내려오면 끔
+export const PACE_CALIB_RANGE: [number, number] = [0.6, 1.6]; // 문장 읽기로 구한 보정값 허용 범위 (벗어나면 잘못 잰 것으로 보고 자름)
+
 // ── 목소리 기준 측정 [가설] 자동 음량 조절을 끈 상태의 dBFS
 export const VOICE_SETUP_SEC = 4.0; // 문장을 읽으며 최소 이만큼 말해야 하고 (문장 전체 약 5~6초)
 export const VOICE_END_SILENCE_SEC = 1.0; // 그 뒤 이만큼 조용해지면 '다 읽었다'로 보고 기준 확정 (3초 고정이면 읽는 중에 넘어감)

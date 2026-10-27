@@ -1,4 +1,5 @@
 import "./styles.css";
+import { cspBlocked, esc } from "./safe";
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { createLandmarker, openCamera, runFaceLoop, type FrameResult } from "./media/camera";
 import { openMic, type Mic } from "./media/mic";
@@ -27,7 +28,6 @@ const TOTAL = ROUNDS * 2;
 const FOLLOW_READ_SEC = 10; // 꼬리질문은 짧으니 읽는 시간도 짧게
 const MIN_CHARS = 30;
 const KEY_STORE = "sibop.geminiKey";
-const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k) ?? ""; } catch { return ""; } },
   set: (k: string, v: string) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch { /* 저장 안 돼도 이번 실행엔 지장 없음 */ } },
@@ -146,8 +146,13 @@ function introHtml() {
   <div class="page">
     <nav class="nav"><div class="brand">면접<b>.</b>코치</div><span class="chip" id="llm-chip">${llmChip(llmState)}</span></nav>
     <div class="wrap">
-      <h1 class="display-xl">면접,<br/>실전처럼.</h1>
-      <p class="lead">채용공고와 자소서를 넣으면 그 회사에 맞는 질문으로 실제 면접처럼 연습할 수 있어요.</p>
+      <section class="hero">
+        <div class="hero-text">
+          <h1 class="display-xl">면접,<br/>실전처럼.</h1>
+          <p class="lead">채용공고와 자소서를 넣으면 그 회사에 맞는 질문으로 실제 면접처럼 연습할 수 있어요.</p>
+        </div>
+        <div class="hero-art" aria-hidden="true"><i class="o1"></i><i class="o2"></i><i class="o3"></i><i class="o4"></i></div>
+      </section>
       <div class="inputs">
         <label class="field"><span class="field-h">희망 회사 채용공고</span>
           <span class="field-sub">자격요건, 우대사항, 인재상을 그대로 붙여 넣어 주세요</span>
@@ -165,7 +170,7 @@ function introHtml() {
         <button class="btn-green" id="go">시작하기</button>
         <p class="privacy">자소서와 영상은 이 컴퓨터 밖으로 나가지 않아요. <span id="stt-chip">${sttNote(S.sttMode)}</span></p>
       </div>
-      ${S.error ? `<div class="err">${S.error}</div>` : ""}
+      ${S.error ? `<div class="err">${esc(S.error)}</div>` : ""}
       <div class="steps">
         ${step(1, "역량 정리", "채용공고에서 필요한 역량을 뽑고 자소서와 맞춰 봐요")}
         ${step(2, "자리 맞추기", "질문을 만드는 동안 카메라와 목소리를 맞춰요")}
@@ -284,7 +289,7 @@ function resultHtml() {
   for (const r of S.results) for (const [k, v] of Object.entries(r.noiseKinds ?? {})) kinds[k] = (kinds[k] ?? 0) + v;
   const loudest = Object.entries(kinds).sort((a, b) => b[1] - a[1])[0]?.[0];
   const noiseRow = all.get("noise");
-  if (noiseRow && loudest) noiseRow.label += ` (주로 ${loudest})`;
+  if (noiseRow && loudest) noiseRow.label += ` (주로 ${esc(loudest)})`;
   const rows = [...all.values()].sort((a, b) => b.count - a.count);
   const total = rows.reduce((a, r) => a + r.count, 0);
   const shown = rows.reduce((a, r) => a + r.shown, 0);
@@ -324,11 +329,11 @@ function resultHtml() {
       <button class="btn-green" id="again">다시 하기</button>
       <button class="btn-ghost" id="new-input">다른 자소서로 하기</button>
     </div>
-    ${S.debug ? "" : "<!--"}<details><summary>측정 정보</summary><pre>${JSON.stringify(
+    ${S.debug ? `<details><summary>측정 정보</summary><pre>${esc(JSON.stringify(
       { face: S.delegate, fps: Math.round(S.fps), mic: { autoGainControl: settings.autoGainControl, noiseSuppression: settings.noiseSuppression, sampleRate: settings.sampleRate },
         prep: S.prep && { timings: S.prep.timings, requiredBy: S.prep.requiredBy, questionsBy: S.prep.questionsBy, llm: llmState.kind, notes: S.prep.note },
         vad: { mode: S.vad?.mode, error: S.vad?.error, sileroShare: S.results.map((r) => r.vadShare) },
-        noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), stt: { mode: S.sttMode, check: S.sttCheck }, camera: S.cam.warnings, ua: navigator.userAgent }, null, 2)}</pre></details>${S.debug ? "" : "-->"}
+        noiseDb: S.voice.noiseDb?.toFixed(1), voiceDb: S.voice.voiceDb?.toFixed(1), stt: { mode: S.sttMode, check: S.sttCheck }, camera: S.cam.warnings, csp: cspBlocked, ua: navigator.userAgent }, null, 2))}</pre></details>` : ""}
   </div></div>`;
 }
 

@@ -2,8 +2,8 @@
 import type { Hit, Required } from "./competency";
 
 export const GEMINI_MODEL = "gemini-3.5-flash-lite"; // poc/face-realtime/question_gen.py와 같은 모델
-const URL = (key: string) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`;
+const URL =
+  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const TIMEOUT_MS = 20000;
 
 const PROMPT = (posting: string, hits: Hit[]) => `너는 한국 기업의 채용 담당자다. 아래 채용공고에서 지원자에게 필요한 역량을 3~5개로 정리하라.
@@ -37,9 +37,10 @@ export async function summarizeRequired(key: string, posting: string, hits: Hit[
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(URL(key), {
+    const res = await fetch(URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key }, // 주소에 키를 넣으면 기록에 남을 수 있어 헤더로 보냄
+      referrerPolicy: "no-referrer",
       signal: ctrl.signal,
       body: JSON.stringify({
         contents: [{ parts: [{ text: PROMPT(posting, hits) }] }],

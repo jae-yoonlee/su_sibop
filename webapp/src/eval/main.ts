@@ -10,6 +10,7 @@ const COMPETENCY_IDS = COMPETENCIES.map((c) => c.id);
 import { AI_DEADLINE_SEC } from "../prep/pipeline";
 import { findAll, semScores } from "../prep/semantic";
 import { embedError } from "../report/embed";
+import { esc, MAX_DATASET_BYTES, parseDataset } from "../safe";
 import {
   blindSheets, byContext, byWords, caseInput, competencyEval, csv, splitCases, parseCsv, scoreAiAnswer, scoreSheets, summarize,
   type Dataset, type QuestionRun,
@@ -25,7 +26,6 @@ const MODELS = [
   { base: "Qwen3.5-4B", note: "약 3.9GB, 새 세대 중형" },
 ];
 
-const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const pct = (v: number) => (Number.isFinite(v) ? `${Math.round(v * 100)}%` : "–");
 const sec = (ms: number) => (Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)}초` : "–");
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -170,7 +170,7 @@ function render() {
       ${comp.scores.map((s) => `<tr><td>${s.name}</td><td>${s.tp}</td><td>${s.fp}</td><td>${s.fn}</td><td>${pct(s.precision)}</td><td>${pct(s.recall)}</td></tr>`).join("")}
       </tbody></table>
       <details><summary>자소서별로 놓친 것과 잘못 찾은 것</summary>
-      <table><tbody>${comp.rows.filter((r) => r.missed.length || r.extra.length).map((r) => `<tr><td>${r.id}</td><td>놓침: ${r.missed.join(", ") || "-"}</td><td>잘못 찾음: ${r.extra.join(", ") || "-"}</td></tr>`).join("")}</tbody></table>
+      <table><tbody>${comp.rows.filter((r) => r.missed.length || r.extra.length).map((r) => `<tr><td>${esc(r.id)}</td><td>놓침: ${esc(r.missed.join(", ") || "-")}</td><td>잘못 찾음: ${esc(r.extra.join(", ") || "-")}</td></tr>`).join("")}</tbody></table>
       </details>
       <button class="btn-primary" id="dlcomp">역량 결과 CSV</button>
       ${methodsHtml()}` : "<p>자료를 불러오는 중…</p>"}
@@ -231,8 +231,8 @@ function bind() {
     const f = (e.target as HTMLInputElement).files?.[0];
     if (!f) return;
     try {
-      const d = JSON.parse(await f.text()) as Dataset;
-      if (!Array.isArray(d.cases) || !Array.isArray(d.postings)) throw new Error("cases, postings 목록이 없어요");
+      if (f.size > MAX_DATASET_BYTES) throw new Error("파일이 너무 커요 (20MB 이하)");
+      const d = parseDataset(await f.text());
       S.ds = d;
       S.sem = null;
       S.dsName = f.name;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CameraSetup, positionIssue } from "./cameraSetup";
-import { analyze, headAngles, faceBox, irisGaze, type FaceInfo } from "./face";
+import { analyze, headAngles, faceBox, faceDepth, irisGaze, type FaceInfo } from "./face";
 import { FeedbackGate } from "./gate";
 import { PostureRules } from "./postureRules";
 import { AnswerCoach } from "./session";
@@ -20,6 +20,8 @@ describe("face", () => {
     const colMajor = [0, 1, 2, 3].flatMap((c) => [0, 1, 2, 3].map((r) => rowMajor[r * 4 + c]));
     expect(headAngles(rowMajor).yaw).toBeCloseTo(30);
     expect(headAngles(colMajor).yaw).toBeCloseTo(30);
+    expect(faceDepth(rowMajor)).toBeCloseTo(50);
+    expect(faceDepth(colMajor)).toBeCloseTo(50);
   });
 
   it("거울 기준으로 x를 뒤집음", () => {
@@ -117,6 +119,21 @@ describe("자세 규칙", () => {
     const r = new PostureRules(base);
     let out: string[] = [];
     run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, w: 0.4 })));
+    expect(out).toContain("shift");
+  });
+
+  it("고개를 돌려 얼굴 폭만 줄고 거리는 그대로면 shift 아님 (10/27 실사용 오경보)", () => {
+    const r = new PostureRules({ ...base, box: { ...CENTER, z: 50 } });
+    let out: string[] = [];
+    run(0, 3, 0.05, (t) => (out = r.update(t, { yaw: 15, pitch: 0 }, info(), { ...CENTER, w: CENTER.w * 0.75, z: 51 })));
+    expect(out).not.toContain("shift");
+    expect(r.shiftBy.size).toBe(0);
+  });
+
+  it("거리가 실제로 크게 바뀌면 shift", () => {
+    const r = new PostureRules({ ...base, box: { ...CENTER, z: 50 } });
+    let out: string[] = [];
+    run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, z: 65 })));
     expect(out).toContain("shift");
   });
 
@@ -331,7 +348,8 @@ describe("알림 간격", () => {
   it("한 번 띄우면 20초 동안 다른 경고는 기다리다 기록만", () => {
     const g = new FeedbackGate();
     expect(g.update(0, ["turn"])).toEqual(["turn"]);
-    expect(g.update(3, ["turn", "noise"])).toEqual([]);
+    expect(g.update(3, ["turn", "noise"])).toEqual(["turn"]); // 카드 3.75초
+    expect(g.update(4, ["turn", "noise"])).toEqual([]);
     g.update(12, ["turn", "noise"]);
     expect(g.log.find((l) => l.name === "noise")!.reason).toBe("EXPIRED");
   });
@@ -362,10 +380,10 @@ describe("알림 간격", () => {
     const g = new FeedbackGate();
     g.update(0, ["turn"]);
     expect(g.update(1, ["look"])).toContain("look"); // 20초 간격에 안 막힘
-    expect(g.update(3, ["look"])).toContain("look"); // 카드 2.5초
-    expect(g.update(4, ["look"])).not.toContain("look"); // 쉬는 중
-    expect(g.update(8.4, ["look"])).not.toContain("look");
-    expect(g.update(8.6, ["gaze"])).toContain("gaze"); // 끝나고 5초 뒤 다시 확인
+    expect(g.update(4.5, ["look"])).toContain("look"); // 카드 3.75초
+    expect(g.update(5, ["look"])).not.toContain("look"); // 쉬는 중
+    expect(g.update(9.6, ["look"])).not.toContain("look");
+    expect(g.update(9.8, ["gaze"])).toContain("gaze"); // 끝나고 5초 뒤 다시 확인
     expect(g.log.filter((l) => l.reason === "EYE")).toHaveLength(2);
   });
 

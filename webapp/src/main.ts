@@ -7,11 +7,12 @@ import { startVad, type Vad, type VadMode } from "./media/vad";
 import { startSound, type SoundSensor } from "./media/sound";
 import { accuracy } from "./media/cer";
 import { STT_MODE_TEXT, sttMode, Transcriber, type SttMode } from "./media/stt";
+import { fixTerms, termVocab, type SttFix } from "./media/sttFix";
 import { CameraSetup, SETUP_MESSAGES } from "./rules/cameraSetup";
 import { ANSWER_SEC, CLIP_LEAD_SEC, PROBLEM_COUNT, QUESTION_SEC, SOUND_EVERY_SEC, WARN_COUNT } from "./rules/constants";
 import { AnswerRecorder, fixDuration } from "./media/recorder";
 import { STATUS_ALERTS } from "./rules/gate";
-import { ALERT_LABELS, AnswerCoach, type AnswerStats } from "./rules/session";
+import { ALERT_LABELS, ALERT_PROBLEMS, AnswerCoach, type AnswerStats } from "./rules/session";
 import { toDb } from "./rules/stats";
 import { SileroGate, VOICE_SETUP_MESSAGES, VoiceSetup } from "./rules/voice";
 import { checkFacts, extractFacts, RECHECK_SCHEMA, type FactResult } from "./report/facts";
@@ -76,7 +77,8 @@ const S = {
   stt: null as Transcriber | null,
   sttCheck: null as { text: string; acc: number; error: string } | null, // 문장 읽기 받아쓰기 결과
   readAttempt: -1,
-  transcripts: [] as string[], // 질문별 답변 받아쓰기
+  transcripts: [] as string[], // 질문별 답변 받아쓰기 (영문 용어 고친 뒤)
+  sttFixes: [] as { raw: string; fixes: SttFix[] }[], // 질문별 고치기 전 글과 고친 낱말 (결과 파일에 남김)
   rec: null as AnswerRecorder | null,
   clips: [] as (string | null)[], // 질문별 답변 녹화 (blob: 주소, 이 브라우저 메모리에만)
   recError: "",
@@ -96,6 +98,7 @@ function askMain() {
 function resetRun() {
   S.results = [];
   S.transcripts = [];
+  S.sttFixes = [];
   S.asked = [];
   S.clips.forEach((u) => u && URL.revokeObjectURL(u));
   S.clips = [];
@@ -249,11 +252,11 @@ function overlayHtml() {
   const label = S.phase === "question" ? "생각하는 시간" : "답변 중";
   const follow = cur()?.kind === "follow" ? `<span class="badge follow">꼬리질문</span>` : "";
   return `
-    <div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length} / ${TOTAL}</span>${follow}<span>${label}</span></div>
+    <div class="qcol"><div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length} / ${TOTAL}</span>${follow}<span>${label}</span></div>
       <p class="q">${q}</p></div>
+      <div class="toasts" aria-live="polite"></div></div>
     <div class="topbar"><div class="timer"><svg width="84" height="84"><circle cx="42" cy="42" r="36" stroke="#e4dfd4" stroke-width="8" fill="none"/>
       <circle id="ring" cx="42" cy="42" r="36" stroke="${S.phase === "question" ? "#63646e" : "#3457f0"}" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="0"/></svg><span id="sec"></span></div></div>
-    <div class="toasts"></div>
     ${S.phase === "answer" && S.sttMode !== "none" ? `<div class="stt-live" id="stt-live">받아쓰는 중…</div>` : ""}
     <div class="bottom-actions"><button class="btn-ghost-sm" id="skip">${S.phase === "question" ? "바로 답변 시작" : "답변 끝내기"}</button></div>
     ${meter}`;
@@ -272,6 +275,13 @@ function prepCard() {
     ${row(p.steps.resume, "자소서와 맞춰 보기")}
     ${row(p.done ? "done" : p.steps.questions, `질문 만들기${ai}`)}
   </div>`;
+}
+
+/** 받아쓴 뒤 고친 용어를 알려 준다 (예: imfp → ISMS-P) */
+function fixNote(i: number) {
+  const f = S.sttFixes[i]?.fixes;
+  if (!f?.length) return "";
+  return `<div class="fact-src">자소서·공고 용어로 고침: ${f.map((x) => `${esc(x.from)} → ${esc(x.to)}`).join(", ")}</div>`;
 }
 
 function resultHtml() {
@@ -295,9 +305,9 @@ function resultHtml() {
   const shown = rows.reduce((a, r) => a + r.shown, 0);
   const top = rows[0]?.label ?? "없음";
   const perQ = S.results
-    .map((r, i) => `<tr><td>질문 ${i + 1}${S.asked[i]?.kind === "follow" ? " <span class='badge follow'>꼬리</span>" : ""}</td><td>${r.durationS}초</td><td>${r.alerts.map((a) => `${a.label} ${a.count}`).join(", ") || "경고 없음"}</td></tr>
+    .map((r, i) => `<tr><td>질문 ${i + 1}${S.asked[i]?.kind === "follow" ? " <span class='badge follow'>꼬리</span>" : ""}</td><td>${r.durationS}초</td><td>${r.alerts.map((a) => `${a.label} ${a.count}`).join(", ") || "문제 없음"}</td></tr>
       <tr><td colspan="3" class="asked">${esc(S.asked[i]?.text ?? "")}${askedNote(S.asked[i])}</td></tr>
-      <tr><td colspan="3" class="transcript">${S.sttMode === "none" ? "받아쓰기 안 됨" : S.transcripts[i] === undefined ? "받아쓰는 중…" : esc(S.transcripts[i] || "(받아쓴 내용 없음)")}</td></tr>`)
+      <tr><td colspan="3" class="transcript">${S.sttMode === "none" ? "받아쓰기 안 됨" : S.transcripts[i] === undefined ? "받아쓰는 중…" : esc(S.transcripts[i] || "(받아쓴 내용 없음)")}${fixNote(i)}</td></tr>`)
     .join("");
   const settings = S.mic?.settings ?? {};
   return `
@@ -306,18 +316,18 @@ function resultHtml() {
     <nav class="nav"><div class="brand">면접<b>.</b>코치</div><span class="badge">결과</span></nav>
     <h1 class="display-md">이번 연습 결과</h1>
     <div class="stats">
-      <div class="stat"><div class="v">${total}</div><div class="k">경고 횟수</div></div>
+      <div class="stat"><div class="v">${total}</div><div class="k">문제가 잡힌 횟수</div></div>
       <div class="stat"><div class="v">${shown}</div><div class="k">화면에 뜬 알림</div></div>
-      <div class="stat"><div class="v" style="font-size:32px;line-height:1.2">${top}</div><div class="k">가장 많이 받은 경고</div></div>
+      <div class="stat"><div class="v" style="font-size:32px;line-height:1.2">${top}</div><div class="k">가장 많았던 문제</div></div>
     </div>
     ${feedbackHtml()}
     ${coverageHtml()}
     <div class="card-dark">
-      <h2 style="margin-top:0">경고 모아 보기</h2>
-      <table><tr><th>경고</th><th>상태</th><th>횟수</th><th>지속 시간</th><th>화면 알림</th></tr>
+      <h2 style="margin-top:0">문제 모아 보기</h2>
+      <table><tr><th>문제</th><th>상태</th><th>횟수</th><th>지속 시간</th><th>화면 알림</th></tr>
       ${rows.map((r) => `<tr><td>${r.label}</td><td><span class="grade ${grade(r.count)}">${GRADE_TEXT[grade(r.count)]}</span></td><td>${r.count}회</td><td>${r.seconds.toFixed(1)}초</td><td>${r.shown}회</td></tr>`).join("") || `<tr><td colspan="5">경고가 없었어요</td></tr>`}
       </table>
-      <p class="muted">${TOTAL}문항을 합쳐 ${WARN_COUNT - 1}회까지 좋음, ${WARN_COUNT}~${PROBLEM_COUNT - 1}회 주의, ${PROBLEM_COUNT}회부터 고칠 점이에요. 답변 중에는 가끔만 알려 드렸지만 여기에는 전부 셌어요.</p>
+      <p class="muted">${TOTAL}문항을 합쳐 ${WARN_COUNT - 1}회까지 좋음, ${WARN_COUNT}~${PROBLEM_COUNT - 1}회 주의, ${PROBLEM_COUNT}회부터 고칠 점이에요. 답변 중에는 가끔만 알려 드렸지만 여기에는 전부 셌어요. 한 번 길게 이어진 문제는 알림이 두 번 뜰 수 있어서 횟수와 알림 수가 다를 수 있어요.</p>
       ${evidenceHtml()}
       ${factsHtml()}
       ${answerCompHtml()}
@@ -462,7 +472,7 @@ function evidenceHtml() {
   const cards = clips
     .map((c, k) => `<button class="clip ${worst(c.names)}" data-k="${k}">
       <span class="clip-q">질문 ${c.q + 1}${S.asked[c.q]?.kind === "follow" ? " 꼬리질문" : ""}, ${mmss(c.from)}–${mmss(c.to)}</span>
-      <b>${c.names.map((n) => esc(ALERT_LABELS[n])).join(", ")}</b>
+      <b>${c.names.map((n) => esc(ALERT_PROBLEMS[n])).join(", ")}</b>
       <span class="grade ${worst(c.names)}">${GRADE_TEXT[worst(c.names)]}</span></button>`)
     .join("");
   return `<h2>경고 장면 다시보기 <span class="badge">${clips.length}개</span></h2>
@@ -489,7 +499,7 @@ async function playClip(k: number) {
   v.dataset.to = String(c.to);
   app.querySelectorAll<HTMLElement>(".clip").forEach((el) => el.classList.toggle("on", el.dataset.k === String(k)));
   const now = $("#replay-now");
-  if (now) now.textContent = `질문 ${c.q + 1}, ${c.names.map((n) => ALERT_LABELS[n]).join(", ")} (${mmss(c.from)}–${mmss(c.to)})`;
+  if (now) now.textContent = `질문 ${c.q + 1}, ${c.names.map((n) => ALERT_PROBLEMS[n]).join(", ")} (${mmss(c.from)}–${mmss(c.to)})`;
   void v.play();
 }
 function bindReplay() {
@@ -584,7 +594,7 @@ function bindPage() {
     }),
   );
   $("#download")?.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "" })), competency: S.prep && { requiredBy: S.prep.requiredBy, coverage: S.prep.coverage, semantic: S.prep.semantic, judgments: S.prep.judgments, model: currentModel(), timings: S.prep.timings }, answerCompetency: typeof S.answerComp === "object" ? S.answerComp : null, feedback: typeof S.feedback === "object" ? S.feedback : null, factCheck: typeof S.facts === "object" && S.facts ? { mode: S.facts.mode, rows: S.facts.rows.map((f) => ({ ...f, used: !S.factOff.has(f.id) })) } : null }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ at: new Date().toISOString(), sttMode: S.sttMode, sttCheck: S.sttCheck, results: S.results.map((r, i) => ({ ...r, asked: S.asked[i], transcript: S.transcripts[i] ?? "", sttFix: S.sttFixes[i] })), competency: S.prep && { requiredBy: S.prep.requiredBy, coverage: S.prep.coverage, semantic: S.prep.semantic, judgments: S.prep.judgments, model: currentModel(), timings: S.prep.timings }, answerCompetency: typeof S.answerComp === "object" ? S.answerComp : null, feedback: typeof S.feedback === "object" ? S.feedback : null, factCheck: typeof S.facts === "object" && S.facts ? { mode: S.facts.mode, rows: S.facts.rows.map((f) => ({ ...f, used: !S.factOff.has(f.id) })) } : null }, null, 2)], { type: "application/json" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `면접코치-${Date.now()}.json` });
     a.click();
   });
@@ -632,10 +642,13 @@ function go(phase: Phase) {
   render();
 }
 
+/** 자소서·공고의 영문 용어 (받아쓰기 힌트 + 받아쓴 뒤 고치기) */
+const sttVocab = () => termVocab([S.input.resume, S.input.posting]);
+
 function startStt() {
   S.stt?.stop(0);
   // 자소서의 프로젝트 이름, 숫자, 기간을 받아쓰기 힌트로 (사실 대조가 이 단어들을 비교하므로)
-  const hints = extractFacts(S.input.resume).filter((f) => f.kind !== "역할").map((f) => f.text);
+  const hints = [...extractFacts(S.input.resume).filter((f) => f.kind !== "역할").map((f) => f.text), ...sttVocab()];
   S.stt = new Transcriber(S.sttMode, (text) => {
     const live = $("#stt-live");
     if (live) live.textContent = `“${text.slice(-30)}”`;
@@ -657,7 +670,11 @@ function endAnswer() {
   const asked = cur();
   const stt = S.stt;
   S.stt = null;
-  const text = stt ? stt.stop() : Promise.resolve("");
+  const text = (stt ? stt.stop() : Promise.resolve("")).then((raw) => {
+    const r = fixTerms(raw, sttVocab());
+    S.sttFixes[qi] = { raw, fixes: r.fixes };
+    return r.text;
+  });
   void text.then((t) => {
     S.transcripts[qi] = t;
     if (S.phase === "result") render();

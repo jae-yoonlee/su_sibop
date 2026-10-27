@@ -87,7 +87,7 @@ export const NOISE_SETUP_SEC = 1.5; // 조용히 있는 동안 소음 측정 (Py
 export const NOISE_MAX_DB = -40.0; // [가설] 측정한 소음이 이보다 크면 말소리가 섞였거나 너무 시끄러운 것 → 다시 잼
 
 // ── 알림 간격 [feedback_gate.py] (2026-10-06 결정: 쉴 때만 띄우기는 빼고 간격 규칙은 유지)
-export const CARD_SEC = 2.5;
+export const CARD_SEC = 3.75; // 알림 카드 표시 시간. 2026-10-27 사용자 요청 "너무 빨리 지나감" → 2.5초 × 1.5
 export const EYE_RECHECK_SEC = 5.0; // 시선 경고는 한 번 띄우면 이만큼 쉬었다가 다시 확인 (2026-10-19 사용자 요청)
 export const GLOBAL_COOLDOWN = 20.0;
 export const TYPE_COOLDOWN = 45.0;

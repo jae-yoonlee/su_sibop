@@ -13,8 +13,8 @@ export function feedbackFacts(f: FeedbackInput): { good: string[]; fix: string[]
   const good: string[] = [];
   const fix: string[] = [];
   const bad = f.alerts.filter((a) => a.grade === "bad"), warn = f.alerts.filter((a) => a.grade === "warn");
-  for (const a of bad) fix.push(`'${a.label}' 경고가 ${a.count}회로 많았음`);
-  for (const a of warn) fix.push(`'${a.label}' 경고가 ${a.count}회 있었음`);
+  for (const a of bad) fix.push(`${a.label} ${a.count}회로 많았음`);
+  for (const a of warn) fix.push(`${a.label} ${a.count}회 있었음`);
   if (!bad.length && !warn.length) good.push("자세와 목소리 경고가 거의 없었음");
   const mism = f.facts.filter((x) => x.verdict === "불일치");
   for (const m of mism.slice(0, 2)) fix.push(`자소서에는 ${m.kind} '${m.text}'라고 썼는데 답변에서는 '${m.said}'라고 말함`);

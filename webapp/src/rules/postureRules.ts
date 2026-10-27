@@ -49,7 +49,10 @@ export function shiftAxes(box: FaceBox, base: FaceBox): ("x" | "y" | "size")[] {
   const out: ("x" | "y" | "size")[] = [];
   if (Math.abs(box.cx - base.cx) > SHIFT_TOL) out.push("x");
   if (Math.abs(box.cy - base.cy) > SHIFT_Y_TOL) out.push("y");
-  if (Math.abs(box.w / base.w - 1) > SHIFT_SIZE_RATIO) out.push("size");
+  // 앞뒤: 얼굴 폭은 고개를 돌리거나 기울이면 20% 넘게 줄어 '자리 이동' 오경보가 났다 (2026-10-27 실사용, shiftBy size 9초).
+  // 거리(z)가 있으면 거리 비율로 본다. 거리가 1.25배면 얼굴 폭이 0.8배인 것과 같음
+  const ratio = box.z && base.z ? base.z / box.z : box.w / base.w;
+  if (Math.abs(ratio - 1) > SHIFT_SIZE_RATIO) out.push("size");
   return out;
 }
 

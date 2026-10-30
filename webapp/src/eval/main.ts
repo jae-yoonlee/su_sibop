@@ -4,15 +4,15 @@ import "../styles.css";
 import "./eval.css";
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
 import { createEngine, currentModel, generateQuestions, preloadLlm, yesNoAsker, yesNoAskerFor } from "../prep/llm";
-import { judgeIds, type Judgment } from "../prep/judge";
+import { calibrate, combined, decideV2, judgeIds, judgeIdsV2, V2, type Judgment, type JudgmentV2 } from "../prep/judge";
 import { COMPETENCIES } from "../prep/competency";
 const COMPETENCY_IDS = COMPETENCIES.map((c) => c.id);
 import { AI_DEADLINE_SEC } from "../prep/pipeline";
-import { findAll, semScores } from "../prep/semantic";
+import { findAll, semScores, semTop } from "../prep/semantic";
 import { embedError } from "../report/embed";
 import { esc, MAX_DATASET_BYTES, parseDataset } from "../safe";
 import {
-  blindSheets, byContext, byWords, caseInput, competencyEval, csv, splitCases, parseCsv, scoreAiAnswer, scoreSheets, summarize,
+  auc, blindSheets, byContext, byWords, prFromFound, caseInput, competencyEval, csv, splitCases, parseCsv, scoreAiAnswer, scoreSheets, summarize,
   type Dataset, type QuestionRun,
 } from "./metrics";
 
@@ -46,6 +46,8 @@ const S = {
   sem: null as null | "running" | { found: Map<string, string[]>; mode: "model" | "fallback"; ms: number }, // 뜻 비교 포함 결과
   judgeModel: "", // 비우면 앱 기본 모델
   judge: null as null | string | { found: Map<string, string[]>; judgments: (Judgment & { caseId: string })[]; model: string; ms: number }, // AI 판정 포함 결과 (문자열 = 진행 상황)
+  cmp: null as null | string | CmpResult, // 예전 AI 판정 vs 새 AI 판정 (조정용 + 시험용)
+  cmpNote: "",
   scored: null as ReturnType<typeof scoreSheets> | null,
   scoreErr: "",
 };
@@ -142,6 +144,155 @@ async function runJudge() {
   render();
 }
 
+// ── AI 판정 비교: 예전 방식(v1) vs 새 방식(v2). 조정용(cases.json)으로 문턱을 정하고 시험용(cases_holdout.json)으로 잰다 ──
+type CaseRun = { set: "조정용" | "시험용"; caseId: string; labels: string[]; rules: string[]; v1: Judgment[]; v2: JudgmentV2[] };
+type CmpResult = { model: string; ms: number; cal: Record<string, number>; runs: CaseRun[]; tau: number };
+
+const TAUS = Array.from({ length: 41 }, (_, i) => -4 + i * 0.25);
+
+/** 조정용 자료에서 F1이 가장 높은 문턱 (시험용은 보지 않음) */
+function pickTau(runs: CaseRun[]) {
+  const dev = runs.filter((r) => r.set === "조정용");
+  let best = V2.tau, bestF = -1;
+  for (const t of TAUS) {
+    const e = prFromFound(dev.map(toCase), new Map(dev.map((r) => [r.caseId, [...r.rules, ...decideV2(r.v2, t)]])));
+    const f = (2 * e.precision * e.recall) / (e.precision + e.recall);
+    if (Number.isFinite(f) && f > bestF) [best, bestF] = [t, f];
+  }
+  return best;
+}
+const toCase = (r: CaseRun) => ({ id: r.caseId, posting: "", resume: "", labels: r.labels });
+
+function cmpRows(res: CmpResult) {
+  const sets = ["조정용", "시험용"] as const;
+  const methods: [string, (r: CaseRun) => string[], (r: CaseRun) => { score: number | null; gold: boolean }[]][] = [
+    ["규칙만 (지금 앱)", (r) => r.rules, () => []],
+    ["규칙 + 예전 AI (확률 50%)", (r) => [...r.rules, ...new Set(r.v1.filter((j) => j.yes).map((j) => j.id))], (r) => r.v1.map((j) => ({ score: j.p, gold: r.labels.includes(j.id) }))],
+    ["규칙 + 새 AI (보정만, 문턱 0)", (r) => [...r.rules, ...decideV2(r.v2, 0, 0)], (r) => r.v2.map((j) => ({ score: j.z, gold: r.labels.includes(j.id) }))],
+    [`규칙 + 새 AI (보정+규칙 합침, 문턱 ${res.tau}: 조정용으로 정함)`, (r) => [...r.rules, ...decideV2(r.v2, res.tau)], (r) => r.v2.map((j) => ({ score: combined(j), gold: r.labels.includes(j.id) }))],
+  ];
+  return methods.map(([name, find, sc]) => ({
+    name,
+    cells: sets.map((set) => {
+      const rs = res.runs.filter((r) => r.set === set);
+      const labeled = rs.some((r) => r.labels.length);
+      const e = prFromFound(rs.map(toCase), new Map(rs.map((r) => [r.caseId, find(r)])));
+      return { labeled, n: rs.length, p: e.precision, r: e.recall, auc: auc(rs.flatMap(sc)) };
+    }),
+  }));
+}
+
+function cmpHtml() {
+  const busy = typeof S.cmp === "string";
+  const res = S.cmp && typeof S.cmp === "object" ? S.cmp : null;
+  return `
+    <h3>AI 판정: 예전 방식 vs 새 방식</h3>
+    <p class="muted">조정용 = 기존 가짜 자소서 20개 (문턱을 정하는 데 씀), 시험용 = 새 가짜 자소서 20개 (점수만 잼, 규칙·예시를 고칠 때 안 봄).
+    AUC = 맞는 후보 문장에 더 높은 점수를 주는 힘 (0.5 = 찍기, 1 = 완벽, 목표 0.8). 노트북 내장 그래픽으로는 1시간 넘게 걸릴 수 있어요. 전원을 연결해 주세요.</p>
+    ${res ? `<table><thead><tr><th>방식</th><th>조정용 정확도</th><th>조정용 재현율</th><th>조정용 AUC</th><th>시험용 정확도</th><th>시험용 재현율</th><th>시험용 AUC</th></tr></thead><tbody>
+      ${cmpRows(res).map((m) => `<tr><td>${esc(m.name)}</td>${m.cells.map((c) => (c.labeled ? `<td>${pct(c.p)}</td><td><b>${pct(c.r)}</b></td><td>${Number.isFinite(c.auc) ? c.auc.toFixed(2) : "–"}</td>` : `<td colspan="3" class="muted">${c.n ? "정답 라벨 없음" : "아직 안 잼"}</td>`)).join("")}</tr>`).join("")}
+      </tbody></table>
+      <p class="muted">모델 ${esc(res.model)}, ${sec(res.ms)}. 버릇(뜻 없는 입력의 yes 확률): ${Object.entries(res.cal).map(([id, p]) => `${COMPETENCIES.find((c) => c.id === id)?.name} ${Math.round(p * 100)}%`).join(", ")}</p>
+      <p class="muted">시험용 ${res.runs.filter((r) => r.set === "시험용").length}/20개, 조정용 ${res.runs.filter((r) => r.set === "조정용").length}/20개로 계산한 표예요.</p>
+      <button class="btn-primary" id="dlcmp">비교 원본 JSON (Claude에게 보낼 파일)</button>
+      ${res.runs.length < 40 ? `<button class="btn-green" id="cmpback">돌아가서 이어서 하기</button>` : ""}`
+    : cmpStartHtml(busy)}`;
+}
+
+function cmpStartHtml(busy: boolean) {
+  const n = loadSaved()?.runs.length ?? 0;
+  const label = busy ? esc(S.cmp as string) : n ? `이어서 하기 (${n}/40 저장됨)` : "예전 vs 새 방식 비교 시작";
+  return `<button class="btn-green" id="cmprun" ${busy || !S.ds ? "disabled" : ""}>${label}</button>
+    ${n && !busy ? `<button class="btn-primary" id="cmppartial">지금까지 결과로 표 보기</button> <button class="btn-primary" id="cmpclear">저장된 진행 지우기</button>` : ""}
+    ${S.cmpNote ? `<p class="warn">${esc(S.cmpNote)}</p>` : ""}
+    <p class="muted">자소서 하나 끝날 때마다 이 브라우저에 저장돼요. 화면이 꺼지거나 창을 닫아도 다시 누르면 이어서 해요. 새 자료(시험용) 20개를 먼저 잽니다.</p>`;
+}
+
+async function runCompare() {
+  S.cmp = "AI 불러오는 중…";
+  render();
+  let ask = null;
+  let model = "";
+  let own: Awaited<ReturnType<typeof createEngine>> | null = null;
+  if (S.judgeModel) {
+    model = modelId(S.judgeModel);
+    own = await createEngine(model, (r) => ((S.cmp = `${S.judgeModel} 불러오는 중… ${Math.round(r.progress * 100)}%`), render())).catch(() => null);
+    ask = own && yesNoAskerFor(own);
+  } else {
+    ask = (await preloadLlm()) && yesNoAsker();
+    model = currentModel();
+  }
+  if (!ask) {
+    S.cmp = null;
+    alert("이 PC에서는 AI를 쓸 수 없어요 (WebGPU 필요)");
+    return render();
+  }
+  let hold: Dataset | null = null;
+  try {
+    hold = (await (await fetch(`${import.meta.env.BASE_URL}eval/cases_holdout.json`)).json()) as Dataset;
+  } catch {
+    alert("시험용 자료(cases_holdout.json)를 못 불러왔어요. 조정용만 잽니다.");
+  }
+  const sv = loadSaved();
+  if (sv && sv.model !== model) {
+    S.cmp = null;
+    S.cmpNote = `저장된 진행은 ${sv.model}로 잰 거예요. 같은 모델로 이어서 하거나, '저장된 진행 지우기'를 누른 뒤 다시 시작하세요.`;
+    await own?.unload();
+    return render();
+  }
+  S.cmpNote = "";
+  const t0 = performance.now() - (sv?.ms ?? 0);
+  let cal: Map<string, number>;
+  if (sv) cal = new Map(Object.entries(sv.cal));
+  else {
+    S.cmp = "버릇 재는 중…";
+    render();
+    cal = await calibrate(COMPETENCY_IDS, ask);
+  }
+  // 시험용(새 자료)을 먼저: 중간에 끊겨도 가장 중요한 숫자가 먼저 쌓이게
+  const all = [...(hold?.cases ?? []).map((c) => ({ set: "시험용" as const, c })), ...S.ds!.cases.map((c) => ({ set: "조정용" as const, c }))];
+  const runs: CaseRun[] = sv?.runs ?? [];
+  for (const [i, { set, c }] of all.entries()) {
+    if (runs.some((r) => r.set === set && r.caseId === c.id)) continue;
+    S.cmp = `판정 중… ${i + 1}/${all.length} (${set} ${c.id})`;
+    render();
+    const rules = byContext(c.resume);
+    const rest = COMPETENCY_IDS.filter((id) => !rules.includes(id));
+    const v1 = await judgeIds(rest, c.resume, ask, 12, await semScores(c.resume, rest));
+    const v2 = await judgeIdsV2(rest, c.resume, ask, cal, await semTop(c.resume, rest, V2.perId));
+    runs.push({ set, caseId: c.id, labels: c.labels, rules, v1, v2 });
+    storeSaved({ model, cal: Object.fromEntries(cal), runs, ms: performance.now() - t0 });
+  }
+  await own?.unload();
+  showResult({ model, cal: Object.fromEntries(cal), runs, ms: performance.now() - t0 });
+}
+
+// 진행 저장 (자소서 하나 끝날 때마다). 같은 모델일 때만 이어서 한다
+const SAVE_KEY = "sibop-eval-compare-v2";
+type Saved = { model: string; cal: Record<string, number>; runs: CaseRun[]; ms: number };
+function loadSaved(): Saved | null {
+  try {
+    return JSON.parse(localStorage.getItem(SAVE_KEY) ?? "null") as Saved | null;
+  } catch {
+    return null;
+  }
+}
+function storeSaved(v: Saved | null) {
+  try {
+    if (v) localStorage.setItem(SAVE_KEY, JSON.stringify(v));
+    else localStorage.removeItem(SAVE_KEY);
+  } catch {
+    /* 저장을 못 해도 측정은 계속 */
+  }
+}
+/** 저장된(또는 끝난) 진행으로 표를 그린다. 일부만 있어도 그린다 */
+function showResult(sv: Saved) {
+  const res: CmpResult = { model: sv.model, ms: sv.ms, cal: sv.cal, runs: sv.runs, tau: 0 };
+  res.tau = pickTau(sv.runs);
+  S.cmp = res;
+  render();
+}
+
 // ── 화면 ─────────────────────────────────────────────
 
 function render() {
@@ -173,7 +324,8 @@ function render() {
       <table><tbody>${comp.rows.filter((r) => r.missed.length || r.extra.length).map((r) => `<tr><td>${esc(r.id)}</td><td>놓침: ${esc(r.missed.join(", ") || "-")}</td><td>잘못 찾음: ${esc(r.extra.join(", ") || "-")}</td></tr>`).join("")}</tbody></table>
       </details>
       <button class="btn-primary" id="dlcomp">역량 결과 CSV</button>
-      ${methodsHtml()}` : "<p>자료를 불러오는 중…</p>"}
+      ${methodsHtml()}
+      ${cmpHtml()}` : "<p>자료를 불러오는 중…</p>"}
     </section>
 
     <section class="card-dark">
@@ -249,6 +401,21 @@ function bind() {
   $("start")?.addEventListener("click", () => void runAll());
   $("semrun")?.addEventListener("click", () => void runSemantic());
   $("judgerun")?.addEventListener("click", () => void runJudge());
+  $("cmprun")?.addEventListener("click", () => void runCompare());
+  $("cmppartial")?.addEventListener("click", () => {
+    const sv = loadSaved();
+    if (sv) showResult(sv);
+  });
+  $("cmpclear")?.addEventListener("click", () => {
+    storeSaved(null);
+    S.cmpNote = "";
+    render();
+  });
+  $("cmpback")?.addEventListener("click", () => {
+    S.cmp = null;
+    render();
+  });
+  $("dlcmp")?.addEventListener("click", () => download(`AI판정비교_${stamp()}.json`, JSON.stringify({ device: S.device.text, ...(S.cmp as CmpResult) }, null, 2), "application/json"));
   $("judgeModel")?.addEventListener("change", (e) => (S.judgeModel = (e.target as HTMLSelectElement).value));
   $("dljudge")?.addEventListener("click", () => {
     const j = S.judge as Exclude<typeof S.judge, string | null>;

@@ -141,3 +141,133 @@ export async function addJudge(coverage: Coverage[], resume: string, ask: YesNoA
   });
   return { coverage: out, judgments, added: out.filter((c, i) => c !== coverage[i]).length };
 }
+
+// ── 새 방식 v2 (2026-10-29): 특정 자소서에 맞추지 않는 일반 기법으로 개선 ──
+// 1) 버릇 보정: 작은 모델은 내용과 상관없이 역량마다 yes를 잘 말하거나 안 말하는 버릇이 있다.
+//    뜻 없는 입력("N/A" 등)을 넣었을 때의 yes 확률을 재서 그만큼 빼고 본다 (Zhao et al., 2021 "Calibrate Before Use").
+// 2) 예시 늘리기: 맞음 2개, 아님 2개. 아님 하나는 '헷갈리기 쉬운 다른 역량의 행동' 문장이라 역량끼리 구분하게 한다.
+// 3) 판단 합치기: 보정한 AI 점수 + 규칙의 약한 서술 점수를 더해 문턱과 비교한다. 문턱은 조정용 자료(cases.json)로만 정한다.
+// 예시 문장은 모두 새로 지었고 검증 자료(cases.json, cases_holdout.json) 문장은 쓰지 않았다.
+
+/** 역량마다 두 번째 '맞음' 예시 */
+export const EXAMPLES_YES2: Record<string, string> = {
+  communication: "회의 내용을 한 장으로 정리해 참석하지 못한 팀원에게 보내고, 궁금한 점은 전화로 다시 설명했습니다.",
+  math: "한 달 치 판매 기록으로 품목별 평균을 내어 보니 오후 시간대 매출이 절반을 차지했습니다.",
+  problem: "출력물이 자꾸 걸리는 이유를 살펴보니 용지 규격이 섞여 있어서였고, 규격을 통일하자 걸림이 사라졌습니다.",
+  self: "부족한 엑셀 실력을 채우려고 매일 저녁 한 시간씩 온라인 강의를 듣고 함수 문제를 풀었습니다.",
+  resource: "행사 예산 50만 원 안에서 꼭 필요한 물품부터 순서를 정해 사고, 남은 돈은 다음 행사로 넘겼습니다.",
+  interpersonal: "새로 온 동료가 적응을 어려워해 점심을 같이 먹으며 일하는 방식을 알려 주고 고민을 들어 주었습니다.",
+  information: "여러 기관의 공개 자료를 찾아 비교하고, 출처가 확실한 것만 골라 보고서에 인용했습니다.",
+  technology: "학교 서버에 웹 페이지를 직접 배포하고, 접속 오류가 나면 로그를 보고 설정을 고쳤습니다.",
+  organization: "회사의 결재 단계를 먼저 익히고, 급한 건도 담당 팀장님 승인을 받은 뒤 처리했습니다.",
+  ethics: "실수로 잘못 안내한 내용을 다음 날 제가 먼저 고객에게 알리고 바로잡았습니다.",
+};
+
+/** 헷갈리기 쉬운 역량 짝 (NCS 정의상 겹치는 영역). 이 역량의 '맞음' 예시가 저 역량에서는 '아님' 예시가 된다 */
+export const CONFUSE: Record<string, string> = {
+  communication: "interpersonal", interpersonal: "communication",
+  math: "information", information: "math",
+  problem: "math", self: "technology", technology: "self",
+  resource: "ethics", ethics: "organization", organization: "ethics",
+};
+
+/** 뜻 없는 입력: 이때의 yes 확률이 그 역량에 대한 모델의 버릇 */
+export const CONTENT_FREE = ["N/A", "(내용 없음)", "..."];
+
+/** 보정 점수 + 약한 서술 점수가 이 값 이상이면 인정 [조정용 자료로 정함, 아래 decideV2] */
+export const V2 = { tau: 0, beta: 0.5, perId: 3 };
+
+export function judgeMessagesV2(id: string, sentence: string): Msg[] {
+  const hard = EXAMPLES[CONFUSE[id]].yes;
+  const shots: [string, "yes" | "no"][] = [
+    [EXAMPLES[id].yes, "yes"],
+    [EXAMPLES[id].no, "no"],
+    [EXAMPLES_YES2[id], "yes"],
+    [hard, "no"],
+  ];
+  return [
+    { role: "system", content: "문장이 주어진 역량을 행동으로 보여 주면 yes. 역량 이름만 있거나, 생각·바람·각오뿐이거나, 맡은 역할만 말했거나, 다른 역량의 행동이면 no. yes 또는 no 한 단어로만 답하세요." },
+    ...shots.flatMap(([s, a]): Msg[] => [{ role: "user", content: ask(id, s) }, { role: "assistant", content: a }]),
+    { role: "user", content: ask(id, sentence) },
+  ];
+}
+
+const clampP = (p: number) => Math.min(1 - 1e-4, Math.max(1e-4, p));
+export const logit = (p: number) => Math.log(clampP(p) / (1 - clampP(p)));
+
+/** 역량마다 뜻 없는 입력의 평균 yes 확률. 못 읽으면 0.5 (보정 안 함) */
+export async function calibrate(ids: string[], ask: YesNoAsk): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (const id of ids) {
+    const ps: number[] = [];
+    for (const cf of CONTENT_FREE) {
+      try {
+        const r = await ask(judgeMessagesV2(id, cf));
+        if (r.p != null) ps.push(r.p);
+      } catch {
+        /* 건너뜀 */
+      }
+    }
+    out.set(id, ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : 0.5);
+  }
+  return out;
+}
+
+export interface JudgmentV2 {
+  id: string;
+  sentence: string;
+  cues: string[];
+  weak: number; // 이 문장의 문맥 규칙 점수 (0~1, 2점 이상이면 이미 규칙으로 인정됨)
+  sem: number | null; // 이 역량 예시 문장과의 뜻 비슷함
+  p: number | null; // yes 확률
+  pcf: number; // 뜻 없는 입력의 yes 확률 (버릇)
+  z: number | null; // 보정 점수 = logit(p) - logit(pcf)
+  ms: number;
+}
+
+/** 새 방식 후보: 역량마다 약한 서술 문장 + 뜻이 가장 가까운 문장들 (점수 기준 없이 위에서 perId개) */
+export function candidatesV2(ids: string[], resume: string, semTop: SemScore[] = [], perId = V2.perId) {
+  const sents = sentences(resume);
+  return ids.flatMap((id) => {
+    if (cueScore(id, sents) >= CUE_PASS) return [];
+    const weak = weakSentences(id, resume);
+    const bySem = semTop.filter((x) => x.id === id).sort((a, b) => b.score - a.score).map((x) => x.sentence);
+    const picked = [...new Set([...weak.map((w) => w.sentence), ...bySem])].slice(0, perId);
+    return picked.map((s) => ({
+      id,
+      sentence: s,
+      cues: cueMatches(id, s).map((m) => m.text),
+      weak: cueMatches(id, s).reduce((t, m) => t + m.w, 0),
+      sem: semTop.find((x) => x.id === id && x.sentence === s)?.score ?? null,
+    }));
+  });
+}
+
+export async function judgeIdsV2(ids: string[], resume: string, ask: YesNoAsk, cal: Map<string, number>, semTop: SemScore[] = [], max = Infinity): Promise<JudgmentV2[]> {
+  const out: JudgmentV2[] = [];
+  for (const t of candidatesV2(ids, resume, semTop).slice(0, max)) {
+    const t0 = performance.now();
+    let p: number | null = null;
+    try {
+      p = (await ask(judgeMessagesV2(t.id, t.sentence))).p;
+    } catch {
+      /* 판정 없음 */
+    }
+    const pcf = cal.get(t.id) ?? 0.5;
+    out.push({ ...t, p, pcf, z: p == null ? null : logit(p) - logit(pcf), ms: Math.round(performance.now() - t0) });
+  }
+  return out;
+}
+
+/** 한 문장의 합친 점수 */
+export const combined = (j: Pick<JudgmentV2, "z" | "weak">, beta = V2.beta) => (j.z == null ? null : j.z + beta * j.weak);
+
+/** 판정 목록에서 인정할 역량 (역량마다 가장 높은 문장 점수가 문턱 이상) */
+export function decideV2(js: JudgmentV2[], tau = V2.tau, beta = V2.beta): string[] {
+  const best = new Map<string, number>();
+  for (const j of js) {
+    const c = combined(j, beta);
+    if (c != null && c > (best.get(j.id) ?? -Infinity)) best.set(j.id, c);
+  }
+  return [...best].filter(([, v]) => v >= tau).map(([id]) => id);
+}

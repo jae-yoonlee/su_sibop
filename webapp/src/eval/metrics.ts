@@ -198,7 +198,7 @@ export function auc(items: { score: number | null; gold: boolean }[]) {
   return s / (pos.length * neg.length);
 }
 
-/** 자소서별로 찾은 역량 목록을 받아 정확도·재현율 */
+/** 자소서별로 찾은 역량 목록을 받아 정밀도·재현율 */
 export function prFromFound(cases: Case[], found: Map<string, string[]>) {
   return competencyEval(cases, () => [], found);
 }

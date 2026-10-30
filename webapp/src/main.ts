@@ -533,11 +533,14 @@ function coverageHtml() {
   const p = S.prep;
   if (!p?.coverage.length) return "";
   const hit = p.coverage.filter((c) => c.found.length).length;
+  // 2026-10-30: 처음 보는 자소서에서 규칙 판정은 '있음' 중 절반만 맞았다 (새 자소서 20개). 그래서 있다/없다를 단정하지 않고
+  // 근거 문장을 보여 주고 판단은 사용자가 하게 한다.
   return `<div class="card-dark" style="margin-bottom:16px">
-    <h2 style="margin-top:0">회사가 원하는 역량과 내 자소서 <span class="badge">${p.coverage.length}개 중 ${hit}개 있음</span></h2>
-    <table><tr><th>필요한 역량</th><th>채용공고에서</th><th>자소서에서</th></tr>
-    ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? `${esc(c.found.join(", "))}${c.via !== "단어" && c.evidence ? `<div class="fact-src">${esc(c.evidence)}</div>` : ""}` : "<span style='color:var(--magenta)'>안 보여요</span>"}</td></tr>`).join("")}
+    <h2 style="margin-top:0">회사가 원하는 역량과 내 자소서 <span class="badge">${p.coverage.length}개 중 ${hit}개 근거 후보</span></h2>
+    <table><tr><th>필요한 역량</th><th>채용공고에서</th><th>자소서 근거 후보</th></tr>
+    ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? `${c.evidence ? `<div class="fact-src">“${esc(c.evidence)}”</div>` : ""}<small class="muted">찾은 말: ${esc(c.found.join(", "))}</small>` : "<span style='color:var(--magenta)'>근거 문장을 못 찾았어요</span>"}</td></tr>`).join("")}
     </table>
+    <p class="muted">자동으로 고른 후보예요. 틀릴 수 있으니 문장을 읽고 이 역량이 행동으로 드러나는지 직접 확인해 주세요. 못 찾은 역량은 자소서에 돌려 말했을 수도 있어요.</p>
   </div>`;
 }
 

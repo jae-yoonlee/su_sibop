@@ -1,4 +1,4 @@
-// 검증 페이지: ① 역량 찾기 규칙의 정확도 ② 질문 모델 비교(자동 지표 + 사람 채점지) ③ 채점 결과 합산.
+// 검증 페이지: ① 역량 찾기 규칙의 정밀도 ② 질문 모델 비교(자동 지표 + 사람 채점지) ③ 채점 결과 합산.
 // 팀 내부용. 앱과 같은 프롬프트·검사 함수를 그대로 쓴다.
 import "../styles.css";
 import "./eval.css";
@@ -80,7 +80,7 @@ function methodsHtml() {
   return `
     <h3>찾는 방식별 비교</h3>
     <p class="muted">문맥 규칙은 1, 3, 5…번째 자소서만 보고 만들었습니다. 그래서 <b>2, 4, 6…번째(안 본 절반)</b> 점수가 실제 실력에 가깝습니다. 두 쪽 차이가 크면 규칙이 본 자료에만 맞춰진 것입니다.</p>
-    <table><thead><tr><th>방식</th><th>본 절반 정확도</th><th>본 절반 재현율</th><th>안 본 절반 정확도</th><th>안 본 절반 재현율</th></tr></thead><tbody>
+    <table><thead><tr><th>방식</th><th>본 절반 정밀도</th><th>본 절반 재현율</th><th>안 본 절반 정밀도</th><th>안 본 절반 재현율</th></tr></thead><tbody>
     ${rows.map(([name, f, m]) => `<tr><td>${name}</td>${cell(dev, f, m)}${cell(test, f, m)}</tr>`).join("")}
     </tbody></table>
     ${judge ? `<p class="muted">AI 판정 ${judge.judgments.length}문장, ${sec(judge.ms)} <button class="btn-primary" id="dljudge">AI 판정 원본 JSON</button></p>` : `<label>판정 모델 <select id="judgeModel" ${typeof S.judge === "string" ? "disabled" : ""}><option value="">앱 기본 모델</option>${MODELS.filter((m) => S.available.has(modelId(m.base))).map((m) => `<option value="${m.base}" ${S.judgeModel === m.base ? "selected" : ""}>${m.base} (${m.note.split(",")[0]})</option>`).join("")}</select></label>
@@ -189,7 +189,7 @@ function cmpHtml() {
     <h3>AI 판정: 예전 방식 vs 새 방식</h3>
     <p class="muted">조정용 = 기존 가짜 자소서 20개 (문턱을 정하는 데 씀), 시험용 = 새 가짜 자소서 20개 (점수만 잼, 규칙·예시를 고칠 때 안 봄).
     AUC = 맞는 후보 문장에 더 높은 점수를 주는 힘 (0.5 = 찍기, 1 = 완벽, 목표 0.8). 노트북 내장 그래픽으로는 1시간 넘게 걸릴 수 있어요. 전원을 연결해 주세요.</p>
-    ${res ? `<table><thead><tr><th>방식</th><th>조정용 정확도</th><th>조정용 재현율</th><th>조정용 AUC</th><th>시험용 정확도</th><th>시험용 재현율</th><th>시험용 AUC</th></tr></thead><tbody>
+    ${res ? `<table><thead><tr><th>방식</th><th>조정용 정밀도</th><th>조정용 재현율</th><th>조정용 AUC</th><th>시험용 정밀도</th><th>시험용 재현율</th><th>시험용 AUC</th></tr></thead><tbody>
       ${cmpRows(res).map((m) => `<tr><td>${esc(m.name)}</td>${m.cells.map((c) => (c.labeled ? `<td>${pct(c.p)}</td><td><b>${pct(c.r)}</b></td><td>${Number.isFinite(c.auc) ? c.auc.toFixed(2) : "–"}</td>` : `<td colspan="3" class="muted">${c.n ? "정답 라벨 없음" : "아직 안 잼"}</td>`)).join("")}</tr>`).join("")}
       </tbody></table>
       <p class="muted">모델 ${esc(res.model)}, ${sec(res.ms)}. 버릇(뜻 없는 입력의 yes 확률): ${Object.entries(res.cal).map(([id, p]) => `${COMPETENCIES.find((c) => c.id === id)?.name} ${Math.round(p * 100)}%`).join(", ")}</p>
@@ -315,9 +315,9 @@ function render() {
     <section class="card-dark">
       <h2>① 역량 찾기 규칙 (AI 없음, 바로 계산)</h2>
       ${comp ? `
-      <p>자소서에서 찾은 역량이 정답 라벨과 얼마나 맞는지: <b>정확도(찾은 것 중 맞은 비율) ${pct(comp.precision)}</b>, <b>재현율(있어야 할 것 중 찾은 비율) ${pct(comp.recall)}</b></p>
+      <p>자소서에서 찾은 역량이 정답 라벨과 얼마나 맞는지: <b>정밀도(찾은 것 중 맞은 비율) ${pct(comp.precision)}</b>, <b>재현율(있어야 할 것 중 찾은 비율) ${pct(comp.recall)}</b></p>
       <p class="muted">정답 라벨은 자료를 만든 사람이 붙인 1차 값입니다. 다른 사람이 따로 라벨을 붙여 비교하기 전까지는 참고용입니다.</p>
-      <table><thead><tr><th>역량</th><th>맞음</th><th>잘못 찾음</th><th>놓침</th><th>정확도</th><th>재현율</th></tr></thead><tbody>
+      <table><thead><tr><th>역량</th><th>맞음</th><th>잘못 찾음</th><th>놓침</th><th>정밀도</th><th>재현율</th></tr></thead><tbody>
       ${comp.scores.map((s) => `<tr><td>${s.name}</td><td>${s.tp}</td><td>${s.fp}</td><td>${s.fn}</td><td>${pct(s.precision)}</td><td>${pct(s.recall)}</td></tr>`).join("")}
       </tbody></table>
       <details><summary>자소서별로 놓친 것과 잘못 찾은 것</summary>
@@ -426,7 +426,7 @@ function bind() {
   $("dlcomp")?.addEventListener("click", () => {
     const c = competencyEval(S.ds!.cases);
     download(`역량찾기_${stamp()}.csv`, csv([
-      ["역량", "맞음", "잘못 찾음", "놓침", "정확도", "재현율"],
+      ["역량", "맞음", "잘못 찾음", "놓침", "정밀도", "재현율"],
       ...c.scores.map((s) => [s.name, s.tp, s.fp, s.fn, pct(s.precision), pct(s.recall)]),
       ["전체", "", "", "", pct(c.precision), pct(c.recall)],
     ]));

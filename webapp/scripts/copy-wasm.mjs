@@ -7,6 +7,7 @@ cpSync("node_modules/@mediapipe/tasks-vision/wasm", "public/mediapipe", { recurs
 mkdirSync("public/eval", { recursive: true });
 cpSync("../data/eval/cases.json", "public/eval/cases.json");
 cpSync("../data/eval/cases_holdout.json", "public/eval/cases_holdout.json");
+cpSync("../data/eval/라벨지_holdout_합의.csv", "public/eval/holdout_gold.csv"); // 시험용 최종 정답 (2026-10-30)
 
 // 주변 소리 분류(YAMNet)용 MediaPipe Audio wasm
 mkdirSync("public/mediapipe-audio", { recursive: true });

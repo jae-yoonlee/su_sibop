@@ -4,6 +4,7 @@ import { QUESTION_SCHEMA, questionPrompt } from "./questions";
 import { FOLLOWUP_SCHEMA } from "./followup";
 import type { Coverage } from "./competency";
 import { yesProb, type YesNoAsk } from "./judge";
+import { fcProbs, type FcAsk } from "./judgeFC";
 
 export type LlmState =
   | { kind: "idle" }
@@ -138,6 +139,23 @@ export function yesNoAskerFor(e: WebWorkerMLCEngine): YesNoAsk {
     const c = res.choices[0];
     const top = c?.logprobs?.content?.[0]?.top_logprobs ?? [];
     return { p: yesProb(top), raw: `${c?.message?.content ?? ""} | ${top.map((t) => `${t.token}:${Math.exp(t.logprob).toFixed(2)}`).join(" ")}` };
+  };
+}
+
+/** 강제선택 판정용: 글자 하나(A~J, X)만 만들고 후보 확률을 읽는다. WebLLM은 후보를 최대 5개까지만 준다 */
+export function fcAskerFor(e: WebWorkerMLCEngine): FcAsk {
+  return async (messages) => {
+    const res = await e.chat.completions.create({
+      messages,
+      temperature: 1, // 확률만 읽으므로 원래 분포 그대로
+      max_tokens: 1,
+      logprobs: true,
+      top_logprobs: 5,
+      extra_body: { enable_thinking: false },
+    });
+    const c = res.choices[0];
+    const top = c?.logprobs?.content?.[0]?.top_logprobs ?? [];
+    return { probs: fcProbs(top), raw: `${c?.message?.content ?? ""} | ${top.map((t) => `${t.token}:${Math.exp(t.logprob).toFixed(2)}`).join(" ")}` };
   };
 }
 

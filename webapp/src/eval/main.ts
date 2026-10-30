@@ -3,7 +3,9 @@
 import "../styles.css";
 import "./eval.css";
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
-import { createEngine, currentModel, generateQuestions, preloadLlm, yesNoAsker, yesNoAskerFor } from "../prep/llm";
+import { createEngine, currentModel, fcAskerFor, generateQuestions, preloadLlm, yesNoAsker, yesNoAskerFor } from "../prep/llm";
+import { fcScores, judgeFC, type FcSentence } from "../prep/judgeFC";
+import { bootstrap, cellAuc, count, crossCount, type Cell } from "./cells";
 import { calibrate, combined, decideV2, judgeIds, judgeIdsV2, V2, type Judgment, type JudgmentV2 } from "../prep/judge";
 import { COMPETENCIES } from "../prep/competency";
 const COMPETENCY_IDS = COMPETENCIES.map((c) => c.id);
@@ -48,6 +50,7 @@ const S = {
   judge: null as null | string | { found: Map<string, string[]>; judgments: (Judgment & { caseId: string })[]; model: string; ms: number }, // AI 판정 포함 결과 (문자열 = 진행 상황)
   cmp: null as null | string | CmpResult, // 예전 AI 판정 vs 새 AI 판정 (조정용 + 시험용)
   cmpNote: "",
+  fc: null as null | string | FcSaved, // 강제선택 측정 (문자열 = 진행 상황)
   scored: null as ReturnType<typeof scoreSheets> | null,
   scoreErr: "",
 };
@@ -293,6 +296,113 @@ function showResult(sv: Saved) {
   render();
 }
 
+// ── 강제선택 측정 (2026-10-30): 앱과 같은 브라우저 안 Qwen으로, 시험용 20개를 문장마다 "역량 하나 또는 없음"으로 묻는다 ──
+// 정답은 합의 정답(holdout_gold.csv). 통과 기준: 자소서체(t01~t10) 칸 AUC가 EXAONE 7.8B yes/no의 0.74를 넘는가
+const FC_KEY = "sibop-eval-fc-v1";
+const FC_BAR = 0.74;
+type FcSaved = { model: string; cases: Record<string, FcSentence[]>; ms: number; gold?: Record<string, string[]>; rules?: Record<string, string[]> };
+function fcLoad(): FcSaved | null {
+  try {
+    return JSON.parse(localStorage.getItem(FC_KEY) ?? "null") as FcSaved | null;
+  } catch {
+    return null;
+  }
+}
+function fcStore(v: FcSaved | null) {
+  try {
+    if (v) localStorage.setItem(FC_KEY, JSON.stringify(v));
+    else localStorage.removeItem(FC_KEY);
+  } catch {
+    /* 저장을 못 해도 측정은 계속 */
+  }
+}
+
+async function fcGold(): Promise<Record<string, string[]>> {
+  const rows = parseCsv(await (await fetch(`${import.meta.env.BASE_URL}eval/holdout_gold.csv`)).text());
+  const head = rows[0];
+  return Object.fromEntries(rows.slice(1).map((r) => [r[0], head.slice(1).filter((_, i) => r[i + 1] === "1")]));
+}
+
+async function runFC() {
+  S.fc = "AI 불러오는 중…";
+  render();
+  let hold: Dataset, gold: Record<string, string[]>;
+  try {
+    hold = (await (await fetch(`${import.meta.env.BASE_URL}eval/cases_holdout.json`)).json()) as Dataset;
+    gold = await fcGold();
+  } catch {
+    S.fc = null;
+    alert("시험용 자료나 정답 파일을 못 불러왔어요.");
+    return render();
+  }
+  let e: WebWorkerMLCEngine | null = null;
+  let own = false;
+  if (S.judgeModel) {
+    e = await createEngine(modelId(S.judgeModel), (r) => ((S.fc = `${S.judgeModel} 불러오는 중… ${Math.round(r.progress * 100)}%`), render())).catch(() => null);
+    own = true;
+  } else e = await preloadLlm();
+  if (!e) {
+    S.fc = null;
+    alert("이 PC에서는 AI를 쓸 수 없어요 (WebGPU 필요)");
+    return render();
+  }
+  const model = S.judgeModel ? modelId(S.judgeModel) : currentModel();
+  const sv = fcLoad();
+  if (sv && sv.model !== model) {
+    S.fc = null;
+    alert(`저장된 진행은 ${sv.model}로 잰 거예요. 같은 모델로 이어서 하거나 '저장된 진행 지우기'를 누르세요.`);
+    if (own) await e.unload();
+    return render();
+  }
+  const ask = fcAskerFor(e);
+  const cases: Record<string, FcSentence[]> = sv?.cases ?? {};
+  const t0 = performance.now() - (sv?.ms ?? 0);
+  for (const [i, c] of hold.cases.entries()) {
+    if (cases[c.id]) continue;
+    S.fc = `판정 중… ${i + 1}/${hold.cases.length} (${c.id})`;
+    render();
+    cases[c.id] = await judgeFC(c.resume, ask);
+    fcStore({ model, cases, ms: performance.now() - t0 });
+  }
+  if (own) await e.unload();
+  S.fc = { model, cases, ms: performance.now() - t0, gold, rules: Object.fromEntries(hold.cases.map((c) => [c.id, byContext(c.resume)])) };
+  render();
+}
+
+function fcCells(r: FcSaved): Cell[] {
+  return Object.keys(r.gold ?? {}).sort().flatMap((caseId) => {
+    const best = r.cases[caseId] ? fcScores(r.cases[caseId]) : null;
+    return COMPETENCY_IDS.map((id) => ({ caseId, id, score: best?.get(id)?.score ?? -Infinity, gold: r.gold![caseId].includes(id), rule: (r.rules?.[caseId] ?? []).includes(id) }));
+  });
+}
+
+function fcHtml() {
+  const busy = typeof S.fc === "string";
+  const r = S.fc && typeof S.fc === "object" ? S.fc : null;
+  const n = Object.keys(fcLoad()?.cases ?? {}).length;
+  const head = `<h3>강제선택 판정 (시험용 20개, 브라우저 안 AI)</h3>
+    <p class="muted">문장마다 "10개 역량 중 가장 잘 드러난 것 하나, 또는 없음"을 고르게 해요. 위 '판정 모델'에서 고른 모델(비우면 앱 기본 Qwen3-1.7B)로 잽니다. 정답은 최종 합의 정답(정답 있음 59칸).
+    통과 기준: 자소서체(t01~t10) 칸 AUC가 ${FC_BAR} 이상 (PC 안 EXAONE 7.8B yes/no 방식과 같은 수준).</p>`;
+  if (!r)
+    return `${head}<button class="btn-green" id="fcrun" ${busy ? "disabled" : ""}>${busy ? esc(S.fc as string) : n ? `이어서 하기 (${n}/20 저장됨)` : "강제선택 측정 시작"}</button>
+      ${n && !busy ? `<button class="btn-primary" id="fcclear">저장된 진행 지우기</button>` : ""}
+      <p class="muted">자소서 하나 끝날 때마다 이 브라우저에 저장돼요. 끊겨도 다시 누르면 이어서 해요.</p>`;
+  const cs = fcCells(r);
+  const half = (k: 1 | 2) => cs.filter((c) => (Number(c.caseId.slice(1)) <= 10) === (k === 1));
+  const rule = count(cs, Infinity);
+  const x = crossCount(cs);
+  const [lo, hi] = bootstrap(cs, cellAuc);
+  const a1 = cellAuc(half(1));
+  return `${head}
+    <table><thead><tr><th>방식</th><th>맞음</th><th>틀림</th><th>놓침</th><th>정밀도</th><th>재현율</th><th>F1</th><th>칸 AUC (95% 구간)</th><th>자소서체 / 말투</th></tr></thead><tbody>
+      <tr><td>규칙만 (지금 앱)</td><td>${rule.tp}</td><td>${rule.fp}</td><td>${rule.fn}</td><td>${pct(rule.precision)}</td><td>${pct(rule.recall)}</td><td>${pct(rule.f1)}</td><td>–</td><td>–</td></tr>
+      <tr><td>규칙 + 강제선택 (${esc(r.model)})</td><td>${x.tp}</td><td>${x.fp}</td><td>${x.fn}</td><td>${pct(x.precision)}</td><td>${pct(x.recall)}</td><td>${pct(x.f1)}</td><td>${cellAuc(cs).toFixed(2)} (${lo.toFixed(2)}~${hi.toFixed(2)})</td><td><b>${a1.toFixed(2)}</b> / ${cellAuc(half(2)).toFixed(2)}</td></tr>
+    </tbody></table>
+    <p><b>${a1 >= FC_BAR ? `통과: 자소서체 ${a1.toFixed(2)} ≥ ${FC_BAR}` : `미달: 자소서체 ${a1.toFixed(2)} < ${FC_BAR}`}</b> · 걸린 시간 ${sec(r.ms)}</p>
+    <p class="muted">비교: 같은 정답에서 브라우저 Qwen3-1.7B yes/no 방식은 0.66, PC 안 EXAONE 7.8B yes/no는 0.74 (자소서체). 문턱은 자소서를 반씩 나눠 정하고 다른 반으로 잼.</p>
+    <button class="btn-primary" id="dlfc">강제선택 원본 JSON (Claude에게 보낼 파일)</button> <button class="btn-primary" id="fcclear">다시 재기</button>`;
+}
+
 // ── 화면 ─────────────────────────────────────────────
 
 function render() {
@@ -325,7 +435,8 @@ function render() {
       </details>
       <button class="btn-primary" id="dlcomp">역량 결과 CSV</button>
       ${methodsHtml()}
-      ${cmpHtml()}` : "<p>자료를 불러오는 중…</p>"}
+      ${cmpHtml()}
+      ${fcHtml()}` : "<p>자료를 불러오는 중…</p>"}
     </section>
 
     <section class="card-dark">
@@ -402,6 +513,14 @@ function bind() {
   $("semrun")?.addEventListener("click", () => void runSemantic());
   $("judgerun")?.addEventListener("click", () => void runJudge());
   $("cmprun")?.addEventListener("click", () => void runCompare());
+  $("fcrun")?.addEventListener("click", () => void runFC());
+  $("fcclear")?.addEventListener("click", () => {
+    if (!confirm("저장된 강제선택 진행을 지울까요?")) return;
+    fcStore(null);
+    S.fc = null;
+    render();
+  });
+  $("dlfc")?.addEventListener("click", () => download(`강제선택_${stamp()}.json`, JSON.stringify({ device: S.device.text, ...(S.fc as FcSaved) }, null, 2), "application/json"));
   $("cmppartial")?.addEventListener("click", () => {
     const sv = loadSaved();
     if (sv) showResult(sv);

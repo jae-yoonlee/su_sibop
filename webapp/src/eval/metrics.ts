@@ -184,3 +184,21 @@ export function scoreSheets(sheet: string[][], key: string[][]) {
   }));
   return { result, unknown };
 }
+
+// ── AI 판정 비교용 ──
+
+/** 정답을 가르는 힘 (AUC): 맞는 후보가 틀린 후보보다 점수가 높을 확률. 같으면 0.5. 점수 없는 후보는 뺀다 */
+export function auc(items: { score: number | null; gold: boolean }[]) {
+  const xs = items.filter((x): x is { score: number; gold: boolean } => x.score != null && Number.isFinite(x.score));
+  const pos = xs.filter((x) => x.gold).map((x) => x.score);
+  const neg = xs.filter((x) => !x.gold).map((x) => x.score);
+  if (!pos.length || !neg.length) return NaN;
+  let s = 0;
+  for (const p of pos) for (const n of neg) s += p > n ? 1 : p === n ? 0.5 : 0;
+  return s / (pos.length * neg.length);
+}
+
+/** 자소서별로 찾은 역량 목록을 받아 정밀도·재현율 */
+export function prFromFound(cases: Case[], found: Map<string, string[]>) {
+  return competencyEval(cases, () => [], found);
+}

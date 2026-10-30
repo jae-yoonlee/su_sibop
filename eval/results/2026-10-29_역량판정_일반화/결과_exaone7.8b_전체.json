@@ -1,0 +1,1473 @@
+{
+ "model": "exaone3.5:7.8b",
+ "final": true,
+ "answers": {
+  "t01|communication": {
+   "p": 0.9885394421137833,
+   "raw": "yes | yes:0.99 no:0.01 Yes:0.00 par:0.00",
+   "ms": 30927
+  },
+  "t02|communication": {
+   "p": 0.9993173291382385,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 8761
+  },
+  "t03|communication": {
+   "p": 0.9999137883667775,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 8438
+  },
+  "t04|communication": {
+   "p": 0.0000014868213424697024,
+   "raw": "no | no:1.00 No:0.00 yes:0.00  no:0.00",
+   "ms": 7062
+  },
+  "t05|communication": {
+   "p": 0.999393036429001,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 8747
+  },
+  "t06|communication": {
+   "p": 0.5880373825119667,
+   "raw": "yes | yes:0.59 no:0.41 par:0.00 No:0.00",
+   "ms": 6886
+  },
+  "t07|communication": {
+   "p": 0.996037755601396,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 7595
+  },
+  "t08|communication": {
+   "p": 0.02106493967845253,
+   "raw": "no | no:0.98 yes:0.02 No:0.00 par:0.00",
+   "ms": 7264
+  },
+  "t09|communication": {
+   "p": 0.9995516869027896,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 6771
+  },
+  "t10|communication": {
+   "p": 0.7823769370339327,
+   "raw": "yes | yes:0.78 no:0.22 par:0.00 Yes:0.00",
+   "ms": 6664
+  },
+  "t11|communication": {
+   "p": 0.9999989007414379,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 7054
+  },
+  "t12|communication": {
+   "p": 0.000004256856304871616,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 par:0.00",
+   "ms": 6136
+  },
+  "t13|communication": {
+   "p": 0.9999736853783684,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 7949
+  },
+  "t14|communication": {
+   "p": 0.9979779282703031,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 No:0.00",
+   "ms": 6864
+  },
+  "t15|communication": {
+   "p": 0.000005563791271128982,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 false:0.00",
+   "ms": 5196
+  },
+  "t16|communication": {
+   "p": 0.9999998131113347,
+   "raw": "yes | yes:1.00 Yes:0.00 **:0.00 no:0.00",
+   "ms": 8070
+  },
+  "t17|communication": {
+   "p": 0.9987748384067348,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 7975
+  },
+  "t18|communication": {
+   "p": 0.9486612623739155,
+   "raw": "yes | yes:0.95 no:0.05 Yes:0.00 No:0.00",
+   "ms": 7118
+  },
+  "t19|communication": {
+   "p": 0.6518181357760243,
+   "raw": "yes | yes:0.65 no:0.35 par:0.00 No:0.00",
+   "ms": 6591
+  },
+  "t20|communication": {
+   "p": 3.2018719863789163e-7,
+   "raw": "no | no:1.00 No:0.00 yes:0.00  no:0.00",
+   "ms": 6122
+  },
+  "t01|math": {
+   "p": 0.9958615321851523,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 No:0.00",
+   "ms": 26379
+  },
+  "t02|math": {
+   "p": 0.9999999755066331,
+   "raw": "yes | yes:1.00 Yes:0.00 **:0.00 no:0.00",
+   "ms": 7350
+  },
+  "t03|math": {
+   "p": 0.9921816227277789,
+   "raw": "yes | yes:0.99 no:0.01 Yes:0.00 No:0.00",
+   "ms": 7584
+  },
+  "t04|math": {
+   "p": 1.969573532646387e-10,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 6215
+  },
+  "t05|math": {
+   "p": 0.9999999466445926,
+   "raw": "yes | yes:1.00 Yes:0.00 **:0.00 no:0.00",
+   "ms": 7873
+  },
+  "t06|math": {
+   "p": 0.010078837703160731,
+   "raw": "no | no:0.99 yes:0.01 No:0.00 Yes:0.00",
+   "ms": 6282
+  },
+  "t07|math": {
+   "p": 0.9999999446135909,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 7185
+  },
+  "t08|math": {
+   "p": 0.42387657764219283,
+   "raw": "no | no:0.58 yes:0.42 No:0.00 Yes:0.00",
+   "ms": 6654
+  },
+  "t09|math": {
+   "p": 0.00015042196927537768,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 6276
+  },
+  "t10|math": {
+   "p": 0.9999422713920403,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 7289
+  },
+  "t11|math": {
+   "p": 0.03865228297339556,
+   "raw": "no | no:0.96 yes:0.04 No:0.00 Yes:0.00",
+   "ms": 6993
+  },
+  "t12|math": {
+   "p": 4.211894612756605e-10,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 5820
+  },
+  "t13|math": {
+   "p": 0.9999993878312857,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 7600
+  },
+  "t14|math": {
+   "p": 0.6654178171566477,
+   "raw": "yes | yes:0.66 no:0.33 No:0.00 Yes:0.00",
+   "ms": 6921
+  },
+  "t15|math": {
+   "p": 5.099508874904985e-8,
+   "raw": "no | no:1.00 No:0.00 n:0.00 yes:0.00",
+   "ms": 5154
+  },
+  "t16|math": {
+   "p": 0.9999998983653651,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 7767
+  },
+  "t17|math": {
+   "p": 0.9847749794382129,
+   "raw": "yes | yes:0.98 no:0.02 Yes:0.00 No:0.00",
+   "ms": 7651
+  },
+  "t18|math": {
+   "p": 0.000002632513600220048,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 6920
+  },
+  "t19|math": {
+   "p": 0.3015328731721038,
+   "raw": "no | no:0.70 yes:0.30 No:0.00 Yes:0.00",
+   "ms": 6617
+  },
+  "t20|math": {
+   "p": 3.5073826232600435e-10,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 5616
+  },
+  "t01|problem": {
+   "p": 0.9999999905609122,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 no:0.00",
+   "ms": 25250
+  },
+  "t02|problem": {
+   "p": 0.9999999860099702,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 7877
+  },
+  "t03|problem": {
+   "p": 0.9999999268049292,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 8436
+  },
+  "t04|problem": {
+   "p": 9.878174048070123e-10,
+   "raw": "no | no:1.00 No:0.00  no:0.00 n:0.00",
+   "ms": 6608
+  },
+  "t05|problem": {
+   "p": 0.9999999833766734,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 8458
+  },
+  "t06|problem": {
+   "p": 0.8868495025382214,
+   "raw": "yes | yes:0.89 no:0.11 Yes:0.00 No:0.00",
+   "ms": 6708
+  },
+  "t07|problem": {
+   "p": 0.9999999960900144,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 7819
+  },
+  "t08|problem": {
+   "p": 0.995402637036862,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 No:0.00",
+   "ms": 7853
+  },
+  "t09|problem": {
+   "p": 0.9999998653247221,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 7708
+  },
+  "t10|problem": {
+   "p": 0.9999985652698815,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 7294
+  },
+  "t11|problem": {
+   "p": 0.9402526919308167,
+   "raw": "yes | yes:0.94 no:0.06 Yes:0.00 No:0.00",
+   "ms": 7564
+  },
+  "t12|problem": {
+   "p": 9.512566107404115e-10,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 6119
+  },
+  "t13|problem": {
+   "p": 0.9999999712960989,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 no:0.00",
+   "ms": 8888
+  },
+  "t14|problem": {
+   "p": 0.9999999376065275,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 7763
+  },
+  "t15|problem": {
+   "p": 0.0006046601003784755,
+   "raw": "no | no:1.00 yes:0.00 No:0.00 n:0.00",
+   "ms": 5429
+  },
+  "t16|problem": {
+   "p": 0.9999999918677323,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 8145
+  },
+  "t17|problem": {
+   "p": 0.9999989780203837,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 9691
+  },
+  "t18|problem": {
+   "p": 0.9095189492287582,
+   "raw": "yes | yes:0.91 no:0.09 Yes:0.00 No:0.00",
+   "ms": 8659
+  },
+  "t19|problem": {
+   "p": 0.9999975499111494,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 7389
+  },
+  "t20|problem": {
+   "p": 6.115858167552396e-10,
+   "raw": "no | no:1.00 No:0.00  no:0.00 n:0.00",
+   "ms": 5877
+  },
+  "t01|self": {
+   "p": 0.9999987877963684,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 8552
+  },
+  "t02|self": {
+   "p": 0.9999991542843285,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 7872
+  },
+  "t03|self": {
+   "p": 0.9964721483759691,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 No:0.00",
+   "ms": 8580
+  },
+  "t04|self": {
+   "p": 0.5860481904312866,
+   "raw": "yes | yes:0.59 no:0.41 No:0.00 Yes:0.00",
+   "ms": 6648
+  },
+  "t05|self": {
+   "p": 0.9999999980067901,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 8491
+  },
+  "t06|self": {
+   "p": 0.9999975223992139,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 7586
+  },
+  "t07|self": {
+   "p": 0.9999998710508964,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 9940
+  },
+  "t08|self": {
+   "p": 0.9999998082951738,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 9062
+  },
+  "t09|self": {
+   "p": 0.9992118423496565,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 7277
+  },
+  "t10|self": {
+   "p": 0.9996456669966763,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 7360
+  },
+  "t11|self": {
+   "p": 0.7006934556985345,
+   "raw": "yes | yes:0.70 no:0.30 No:0.00 Yes:0.00",
+   "ms": 7315
+  },
+  "t12|self": {
+   "p": 0.000018492597365790096,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 6115
+  },
+  "t13|self": {
+   "p": 0.9999997438566071,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 7657
+  },
+  "t14|self": {
+   "p": 0.9988618406275228,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 No:0.00",
+   "ms": 8138
+  },
+  "t15|self": {
+   "p": 0.010063978375893927,
+   "raw": "no | no:0.99 yes:0.01 No:0.00 Yes:0.00",
+   "ms": 5820
+  },
+  "t16|self": {
+   "p": 0.999999980261585,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 no:0.00",
+   "ms": 8611
+  },
+  "t17|self": {
+   "p": 0.9999996062854841,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 8474
+  },
+  "t18|self": {
+   "p": 0.9999930711441674,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 8515
+  },
+  "t19|self": {
+   "p": 0.9999998865145446,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 7354
+  },
+  "t20|self": {
+   "p": 1.2604320831736445e-8,
+   "raw": "no | no:1.00 No:0.00 n:0.00 yes:0.00",
+   "ms": 7314
+  },
+  "t01|resource": {
+   "p": 0.9999914062460539,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 29180
+  },
+  "t02|resource": {
+   "p": 0.999999719930692,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 8161
+  },
+  "t03|resource": {
+   "p": 0.9999806715091751,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 8415
+  },
+  "t04|resource": {
+   "p": 9.506748674081812e-9,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 7036
+  },
+  "t05|resource": {
+   "p": 0.9999965305967095,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 9005
+  },
+  "t06|resource": {
+   "p": 0.9871490596406576,
+   "raw": "yes | yes:0.99 no:0.01 Yes:0.00 No:0.00",
+   "ms": 7209
+  },
+  "t07|resource": {
+   "p": 0.9979584473311194,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 No:0.00",
+   "ms": 8071
+  },
+  "t08|resource": {
+   "p": 0.9954988701415771,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 7801
+  },
+  "t09|resource": {
+   "p": 0.20112785044340442,
+   "raw": "no | no:0.80 yes:0.20 No:0.00 Yes:0.00",
+   "ms": 10811
+  },
+  "t10|resource": {
+   "p": 0.9999999936965139,
+   "raw": "yes | yes:1.00 Yes:0.00 **:0.00  yes:0.00",
+   "ms": 11400
+  },
+  "t11|resource": {
+   "p": 0.12213116164948114,
+   "raw": "no | no:0.88 yes:0.12 No:0.00 Yes:0.00",
+   "ms": 10655
+  },
+  "t12|resource": {
+   "p": 2.3277257423341885e-9,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 7464
+  },
+  "t13|resource": {
+   "p": 0.9999999864880647,
+   "raw": "yes | yes:1.00 Yes:0.00 **:0.00  yes:0.00",
+   "ms": 9593
+  },
+  "t14|resource": {
+   "p": 0.9999968382301585,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 8796
+  },
+  "t15|resource": {
+   "p": 2.6755624413308373e-7,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 6750
+  },
+  "t16|resource": {
+   "p": 0.9999756368296681,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 10598
+  },
+  "t17|resource": {
+   "p": 0.9998547845653678,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 13978
+  },
+  "t18|resource": {
+   "p": 0.0943379918907994,
+   "raw": "no | no:0.91 yes:0.09 No:0.00 par:0.00",
+   "ms": 10470
+  },
+  "t19|resource": {
+   "p": 0.9999860925312702,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 8753
+  },
+  "t20|resource": {
+   "p": 1.3599249032481798e-9,
+   "raw": "no | no:1.00 No:0.00  no:0.00 n:0.00",
+   "ms": 7225
+  },
+  "t01|interpersonal": {
+   "p": 0.9999446167524894,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 38536
+  },
+  "t02|interpersonal": {
+   "p": 0.00025902385280016446,
+   "raw": "no | no:1.00 yes:0.00 No:0.00 n:0.00",
+   "ms": 9907
+  },
+  "t03|interpersonal": {
+   "p": 0.9999824921436603,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 10603
+  },
+  "t04|interpersonal": {
+   "p": 1.280567272471202e-7,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 8284
+  },
+  "t05|interpersonal": {
+   "p": 0.0723330153400265,
+   "raw": "no | no:0.93 yes:0.07 No:0.00 par:0.00",
+   "ms": 10219
+  },
+  "t06|interpersonal": {
+   "p": 0.000001960000388497809,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 8165
+  },
+  "t07|interpersonal": {
+   "p": 0.9337570076396674,
+   "raw": "yes | yes:0.93 no:0.07 Yes:0.00 No:0.00",
+   "ms": 9011
+  },
+  "t08|interpersonal": {
+   "p": 0.000012106884267741298,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 8338
+  },
+  "t09|interpersonal": {
+   "p": 0.9999889734204561,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 8018
+  },
+  "t10|interpersonal": {
+   "p": 0.3240878277270529,
+   "raw": "no | no:0.68 yes:0.32 No:0.00 Yes:0.00",
+   "ms": 7840
+  },
+  "t11|interpersonal": {
+   "p": 0.9998031561430802,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 8230
+  },
+  "t12|interpersonal": {
+   "p": 0.000003785873946985526,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 7791
+  },
+  "t13|interpersonal": {
+   "p": 0.9890910380167895,
+   "raw": "yes | yes:0.99 no:0.01 Yes:0.00 **:0.00",
+   "ms": 11173
+  },
+  "t14|interpersonal": {
+   "p": 0.9910519925852955,
+   "raw": "yes | yes:0.99 no:0.01 Yes:0.00 No:0.00",
+   "ms": 8585
+  },
+  "t15|interpersonal": {
+   "p": 4.828583625329872e-10,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 6661
+  },
+  "t16|interpersonal": {
+   "p": 0.9947049986564859,
+   "raw": "yes | yes:0.99 no:0.01 Yes:0.00 No:0.00",
+   "ms": 10870
+  },
+  "t17|interpersonal": {
+   "p": 0.0024343151629739046,
+   "raw": "no | no:1.00 yes:0.00 No:0.00 par:0.00",
+   "ms": 9573
+  },
+  "t18|interpersonal": {
+   "p": 0.00031959703427628556,
+   "raw": "no | no:1.00 yes:0.00 No:0.00 par:0.00",
+   "ms": 8904
+  },
+  "t19|interpersonal": {
+   "p": 0.19402812872141498,
+   "raw": "no | no:0.81 yes:0.19 No:0.00 par:0.00",
+   "ms": 8407
+  },
+  "t20|interpersonal": {
+   "p": 4.738435998910868e-9,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 7055
+  },
+  "t01|information": {
+   "p": 0.9838916210185242,
+   "raw": "yes | yes:0.98 no:0.02 Yes:0.00 No:0.00",
+   "ms": 30869
+  },
+  "t02|information": {
+   "p": 0.9999999850439614,
+   "raw": "yes | yes:1.00 Yes:0.00 **:0.00  yes:0.00",
+   "ms": 9271
+  },
+  "t03|information": {
+   "p": 0.9992835541279315,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 No:0.00",
+   "ms": 9791
+  },
+  "t04|information": {
+   "p": 2.317921104588751e-9,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 7966
+  },
+  "t05|information": {
+   "p": 0.9999999918241074,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 10089
+  },
+  "t06|information": {
+   "p": 0.9533178377383086,
+   "raw": "yes | yes:0.95 no:0.05 Yes:0.00 No:0.00",
+   "ms": 8086
+  },
+  "t07|information": {
+   "p": 0.9999998604929953,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 8848
+  },
+  "t08|information": {
+   "p": 0.9446863132154986,
+   "raw": "yes | yes:0.94 no:0.06 Yes:0.00 No:0.00",
+   "ms": 8465
+  },
+  "t09|information": {
+   "p": 0.3538534288483988,
+   "raw": "no | no:0.65 yes:0.35 No:0.00 Yes:0.00",
+   "ms": 8021
+  },
+  "t10|information": {
+   "p": 0.9999998139986582,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 7979
+  },
+  "t11|information": {
+   "p": 0.10572006775673945,
+   "raw": "no | no:0.89 yes:0.11 No:0.00 Yes:0.00",
+   "ms": 8289
+  },
+  "t12|information": {
+   "p": 3.081035638487213e-10,
+   "raw": "no | no:1.00 No:0.00  no:0.00 n:0.00",
+   "ms": 6934
+  },
+  "t13|information": {
+   "p": 0.9999990737112262,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 8731
+  },
+  "t14|information": {
+   "p": 0.9540845191938117,
+   "raw": "yes | yes:0.95 no:0.05 Yes:0.00 No:0.00",
+   "ms": 8208
+  },
+  "t15|information": {
+   "p": 0.0036523533370501357,
+   "raw": "no | no:1.00 yes:0.00 No:0.00 Yes:0.00",
+   "ms": 6342
+  },
+  "t16|information": {
+   "p": 0.9999999266081959,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 9571
+  },
+  "t17|information": {
+   "p": 0.9999993063253371,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 9294
+  },
+  "t18|information": {
+   "p": 0.07808925533093221,
+   "raw": "no | no:0.92 yes:0.08 No:0.00 Yes:0.00",
+   "ms": 8642
+  },
+  "t19|information": {
+   "p": 0.8644074555923019,
+   "raw": "yes | yes:0.86 no:0.14 Yes:0.00 No:0.00",
+   "ms": 8135
+  },
+  "t20|information": {
+   "p": 9.969825510459976e-10,
+   "raw": "no | no:1.00 No:0.00  no:0.00 n:0.00",
+   "ms": 7235
+  },
+  "t01|technology": {
+   "p": 0.9999999987387523,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 31117
+  },
+  "t02|technology": {
+   "p": 0.999999975830991,
+   "raw": "yes | yes:1.00 Yes:0.00 **:0.00  yes:0.00",
+   "ms": 9124
+  },
+  "t03|technology": {
+   "p": 0.9999901083213628,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 9443
+  },
+  "t04|technology": {
+   "p": 2.3392087468229315e-9,
+   "raw": "no | no:1.00 No:0.00 n:0.00 yes:0.00",
+   "ms": 7621
+  },
+  "t05|technology": {
+   "p": 0.9999999988074646,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 11978
+  },
+  "t06|technology": {
+   "p": 0.999999994169203,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 10266
+  },
+  "t07|technology": {
+   "p": 0.9999999963575747,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 9525
+  },
+  "t08|technology": {
+   "p": 0.9999999408026163,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00 **:0.00",
+   "ms": 8923
+  },
+  "t09|technology": {
+   "p": 0.19270997807570228,
+   "raw": "no | no:0.81 yes:0.19 No:0.00 Yes:0.00",
+   "ms": 8319
+  },
+  "t10|technology": {
+   "p": 0.9999998267087322,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 8221
+  },
+  "t11|technology": {
+   "p": 0.9618443473812918,
+   "raw": "yes | yes:0.96 no:0.04 Yes:0.00 No:0.00",
+   "ms": 8448
+  },
+  "t12|technology": {
+   "p": 2.2300745796306727e-10,
+   "raw": "no | no:1.00 No:0.00  no:0.00 n:0.00",
+   "ms": 7145
+  },
+  "t13|technology": {
+   "p": 0.9999999982623489,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 8786
+  },
+  "t14|technology": {
+   "p": 0.99999976999137,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 8576
+  },
+  "t15|technology": {
+   "p": 0.027988007154724878,
+   "raw": "no | no:0.97 yes:0.03 No:0.00 Yes:0.00",
+   "ms": 6589
+  },
+  "t16|technology": {
+   "p": 0.9999999981032089,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 10214
+  },
+  "t17|technology": {
+   "p": 0.9999999882966943,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 11310
+  },
+  "t18|technology": {
+   "p": 0.9980694836321318,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 No:0.00",
+   "ms": 9086
+  },
+  "t19|technology": {
+   "p": 0.9999999893534157,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 8390
+  },
+  "t20|technology": {
+   "p": 1.3274883019610747e-8,
+   "raw": "no | no:1.00 No:0.00 yes:0.00  no:0.00",
+   "ms": 7217
+  },
+  "t01|organization": {
+   "p": 0.9999610672277695,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 40001
+  },
+  "t02|organization": {
+   "p": 0.9986340115200123,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00 **:0.00",
+   "ms": 9888
+  },
+  "t03|organization": {
+   "p": 0.9994012071938224,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 10117
+  },
+  "t04|organization": {
+   "p": 3.394160738383485e-9,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 8231
+  },
+  "t05|organization": {
+   "p": 0.9901059800832707,
+   "raw": "yes | yes:0.99 no:0.01 Yes:0.00 No:0.00",
+   "ms": 10672
+  },
+  "t06|organization": {
+   "p": 0.9999999951350572,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 8699
+  },
+  "t07|organization": {
+   "p": 0.32971699817945643,
+   "raw": "no | no:0.67 yes:0.33 No:0.00 Yes:0.00",
+   "ms": 9415
+  },
+  "t08|organization": {
+   "p": 0.7561058113596282,
+   "raw": "yes | yes:0.76 no:0.24 Yes:0.00 No:0.00",
+   "ms": 9008
+  },
+  "t09|organization": {
+   "p": 0.19994899846472797,
+   "raw": "no | no:0.80 yes:0.20 No:0.00 Yes:0.00",
+   "ms": 8568
+  },
+  "t10|organization": {
+   "p": 0.9999713225351463,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 8592
+  },
+  "t11|organization": {
+   "p": 0.04428068950688021,
+   "raw": "no | no:0.95 yes:0.04 No:0.00 par:0.00",
+   "ms": 8905
+  },
+  "t12|organization": {
+   "p": 3.439978494939706e-9,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 7385
+  },
+  "t13|organization": {
+   "p": 0.9999987086016969,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 9186
+  },
+  "t14|organization": {
+   "p": 0.9531741223969452,
+   "raw": "yes | yes:0.95 no:0.05 Yes:0.00 No:0.00",
+   "ms": 8690
+  },
+  "t15|organization": {
+   "p": 1.6317386979304501e-9,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 6836
+  },
+  "t16|organization": {
+   "p": 0.9999855175629588,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 10494
+  },
+  "t17|organization": {
+   "p": 0.9996665929717274,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 10075
+  },
+  "t18|organization": {
+   "p": 0.9999999039735886,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 9410
+  },
+  "t19|organization": {
+   "p": 0.009176844568072202,
+   "raw": "no | no:0.99 yes:0.01 No:0.00 par:0.00",
+   "ms": 8716
+  },
+  "t20|organization": {
+   "p": 4.980633470402745e-10,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 7545
+  },
+  "t01|ethics": {
+   "p": 0.9999999655077447,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 38189
+  },
+  "t02|ethics": {
+   "p": 0.99302542805544,
+   "raw": "yes | yes:0.99 no:0.01 Yes:0.00 No:0.00",
+   "ms": 10148
+  },
+  "t03|ethics": {
+   "p": 0.9999999903468613,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 no:0.00",
+   "ms": 10472
+  },
+  "t04|ethics": {
+   "p": 3.978968658667366e-9,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 8597
+  },
+  "t05|ethics": {
+   "p": 0.9999999479641928,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 11209
+  },
+  "t06|ethics": {
+   "p": 0.9999999944770108,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 8892
+  },
+  "t07|ethics": {
+   "p": 0.9999887346295606,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 9816
+  },
+  "t08|ethics": {
+   "p": 0.9999999952243178,
+   "raw": "yes | yes:1.00 Yes:0.00 **:0.00  yes:0.00",
+   "ms": 9570
+  },
+  "t09|ethics": {
+   "p": 0.9999966581871498,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 8927
+  },
+  "t10|ethics": {
+   "p": 0.9999999933835745,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 8871
+  },
+  "t11|ethics": {
+   "p": 0.9999951979969756,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 9495
+  },
+  "t12|ethics": {
+   "p": 1.7823615950315896e-9,
+   "raw": "no | no:1.00 No:0.00 n:0.00  no:0.00",
+   "ms": 7739
+  },
+  "t13|ethics": {
+   "p": 0.9999999771331809,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 9796
+  },
+  "t14|ethics": {
+   "p": 0.9999999395181708,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 9206
+  },
+  "t15|ethics": {
+   "p": 0.0000029564036984436626,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 7077
+  },
+  "t16|ethics": {
+   "p": 0.9999999902587184,
+   "raw": "yes | yes:1.00 Yes:0.00  yes:0.00 **:0.00",
+   "ms": 10649
+  },
+  "t17|ethics": {
+   "p": 0.9999925349053265,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 10441
+  },
+  "t18|ethics": {
+   "p": 0.9999997396532867,
+   "raw": "yes | yes:1.00 Yes:0.00 no:0.00  yes:0.00",
+   "ms": 9495
+  },
+  "t19|ethics": {
+   "p": 0.9999930037910912,
+   "raw": "yes | yes:1.00 no:0.00 Yes:0.00  yes:0.00",
+   "ms": 8919
+  },
+  "t20|ethics": {
+   "p": 1.3732214107149362e-8,
+   "raw": "no | no:1.00 No:0.00 yes:0.00 n:0.00",
+   "ms": 7747
+  }
+ },
+ "runs": [
+  {
+   "caseId": "t01",
+   "labels": [
+    "communication",
+    "problem",
+    "interpersonal"
+   ],
+   "rules": [],
+   "whole": {
+    "communication": 0.9885394421137833,
+    "math": 0.9958615321851523,
+    "problem": 0.9999999905609122,
+    "self": 0.9999987877963684,
+    "resource": 0.9999914062460539,
+    "interpersonal": 0.9999446167524894,
+    "information": 0.9838916210185242,
+    "technology": 0.9999999987387523,
+    "organization": 0.9999610672277695,
+    "ethics": 0.9999999655077447
+   }
+  },
+  {
+   "caseId": "t02",
+   "labels": [
+    "communication",
+    "math",
+    "information"
+   ],
+   "rules": [
+    "communication"
+   ],
+   "whole": {
+    "communication": 0.9993173291382385,
+    "math": 0.9999999755066331,
+    "problem": 0.9999999860099702,
+    "self": 0.9999991542843285,
+    "resource": 0.999999719930692,
+    "interpersonal": 0.00025902385280016446,
+    "information": 0.9999999850439614,
+    "technology": 0.999999975830991,
+    "organization": 0.9986340115200123,
+    "ethics": 0.99302542805544
+   }
+  },
+  {
+   "caseId": "t03",
+   "labels": [
+    "communication",
+    "problem",
+    "ethics"
+   ],
+   "rules": [
+    "communication"
+   ],
+   "whole": {
+    "communication": 0.9999137883667775,
+    "math": 0.9921816227277789,
+    "problem": 0.9999999268049292,
+    "self": 0.9964721483759691,
+    "resource": 0.9999806715091751,
+    "interpersonal": 0.9999824921436603,
+    "information": 0.9992835541279315,
+    "technology": 0.9999901083213628,
+    "organization": 0.9994012071938224,
+    "ethics": 0.9999999903468613
+   }
+  },
+  {
+   "caseId": "t04",
+   "labels": [],
+   "rules": [
+    "self",
+    "organization"
+   ],
+   "whole": {
+    "communication": 0.0000014868213424697024,
+    "math": 1.969573532646387e-10,
+    "problem": 9.878174048070123e-10,
+    "self": 0.5860481904312866,
+    "resource": 9.506748674081812e-9,
+    "interpersonal": 1.280567272471202e-7,
+    "information": 2.317921104588751e-9,
+    "technology": 2.3392087468229315e-9,
+    "organization": 3.394160738383485e-9,
+    "ethics": 3.978968658667366e-9
+   }
+  },
+  {
+   "caseId": "t05",
+   "labels": [
+    "problem",
+    "self",
+    "technology",
+    "ethics"
+   ],
+   "rules": [
+    "self",
+    "technology",
+    "communication",
+    "math",
+    "problem"
+   ],
+   "whole": {
+    "communication": 0.999393036429001,
+    "math": 0.9999999466445926,
+    "problem": 0.9999999833766734,
+    "self": 0.9999999980067901,
+    "resource": 0.9999965305967095,
+    "interpersonal": 0.0723330153400265,
+    "information": 0.9999999918241074,
+    "technology": 0.9999999988074646,
+    "organization": 0.9901059800832707,
+    "ethics": 0.9999999479641928
+   }
+  },
+  {
+   "caseId": "t06",
+   "labels": [
+    "self",
+    "organization"
+   ],
+   "rules": [
+    "technology",
+    "ethics",
+    "communication"
+   ],
+   "whole": {
+    "communication": 0.5880373825119667,
+    "math": 0.010078837703160731,
+    "problem": 0.8868495025382214,
+    "self": 0.9999975223992139,
+    "resource": 0.9871490596406576,
+    "interpersonal": 0.000001960000388497809,
+    "information": 0.9533178377383086,
+    "technology": 0.999999994169203,
+    "organization": 0.9999999951350572,
+    "ethics": 0.9999999944770108
+   }
+  },
+  {
+   "caseId": "t07",
+   "labels": [
+    "problem",
+    "interpersonal"
+   ],
+   "rules": [
+    "communication"
+   ],
+   "whole": {
+    "communication": 0.996037755601396,
+    "math": 0.9999999446135909,
+    "problem": 0.9999999960900144,
+    "self": 0.9999998710508964,
+    "resource": 0.9979584473311194,
+    "interpersonal": 0.9337570076396674,
+    "information": 0.9999998604929953,
+    "technology": 0.9999999963575747,
+    "organization": 0.32971699817945643,
+    "ethics": 0.9999887346295606
+   }
+  },
+  {
+   "caseId": "t08",
+   "labels": [
+    "self",
+    "organization",
+    "ethics"
+   ],
+   "rules": [
+    "ethics"
+   ],
+   "whole": {
+    "communication": 0.02106493967845253,
+    "math": 0.42387657764219283,
+    "problem": 0.995402637036862,
+    "self": 0.9999998082951738,
+    "resource": 0.9954988701415771,
+    "interpersonal": 0.000012106884267741298,
+    "information": 0.9446863132154986,
+    "technology": 0.9999999408026163,
+    "organization": 0.7561058113596282,
+    "ethics": 0.9999999952243178
+   }
+  },
+  {
+   "caseId": "t09",
+   "labels": [
+    "interpersonal",
+    "ethics"
+   ],
+   "rules": [
+    "communication",
+    "self"
+   ],
+   "whole": {
+    "communication": 0.9995516869027896,
+    "math": 0.00015042196927537768,
+    "problem": 0.9999998653247221,
+    "self": 0.9992118423496565,
+    "resource": 0.20112785044340442,
+    "interpersonal": 0.9999889734204561,
+    "information": 0.3538534288483988,
+    "technology": 0.19270997807570228,
+    "organization": 0.19994899846472797,
+    "ethics": 0.9999966581871498
+   }
+  },
+  {
+   "caseId": "t10",
+   "labels": [
+    "communication",
+    "resource",
+    "ethics"
+   ],
+   "rules": [
+    "resource"
+   ],
+   "whole": {
+    "communication": 0.7823769370339327,
+    "math": 0.9999422713920403,
+    "problem": 0.9999985652698815,
+    "self": 0.9996456669966763,
+    "resource": 0.9999999936965139,
+    "interpersonal": 0.3240878277270529,
+    "information": 0.9999998139986582,
+    "technology": 0.9999998267087322,
+    "organization": 0.9999713225351463,
+    "ethics": 0.9999999933835745
+   }
+  },
+  {
+   "caseId": "t11",
+   "labels": [
+    "communication",
+    "organization",
+    "ethics"
+   ],
+   "rules": [
+    "problem",
+    "organization",
+    "ethics"
+   ],
+   "whole": {
+    "communication": 0.9999989007414379,
+    "math": 0.03865228297339556,
+    "problem": 0.9402526919308167,
+    "self": 0.7006934556985345,
+    "resource": 0.12213116164948114,
+    "interpersonal": 0.9998031561430802,
+    "information": 0.10572006775673945,
+    "technology": 0.9618443473812918,
+    "organization": 0.04428068950688021,
+    "ethics": 0.9999951979969756
+   }
+  },
+  {
+   "caseId": "t12",
+   "labels": [],
+   "rules": [
+    "self",
+    "organization"
+   ],
+   "whole": {
+    "communication": 0.000004256856304871616,
+    "math": 4.211894612756605e-10,
+    "problem": 9.512566107404115e-10,
+    "self": 0.000018492597365790096,
+    "resource": 2.3277257423341885e-9,
+    "interpersonal": 0.000003785873946985526,
+    "information": 3.081035638487213e-10,
+    "technology": 2.2300745796306727e-10,
+    "organization": 3.439978494939706e-9,
+    "ethics": 1.7823615950315896e-9
+   }
+  },
+  {
+   "caseId": "t13",
+   "labels": [
+    "math",
+    "resource",
+    "interpersonal",
+    "technology",
+    "ethics"
+   ],
+   "rules": [
+    "resource",
+    "technology"
+   ],
+   "whole": {
+    "communication": 0.9999736853783684,
+    "math": 0.9999993878312857,
+    "problem": 0.9999999712960989,
+    "self": 0.9999997438566071,
+    "resource": 0.9999999864880647,
+    "interpersonal": 0.9890910380167895,
+    "information": 0.9999990737112262,
+    "technology": 0.9999999982623489,
+    "organization": 0.9999987086016969,
+    "ethics": 0.9999999771331809
+   }
+  },
+  {
+   "caseId": "t14",
+   "labels": [
+    "communication",
+    "problem",
+    "information"
+   ],
+   "rules": [],
+   "whole": {
+    "communication": 0.9979779282703031,
+    "math": 0.6654178171566477,
+    "problem": 0.9999999376065275,
+    "self": 0.9988618406275228,
+    "resource": 0.9999968382301585,
+    "interpersonal": 0.9910519925852955,
+    "information": 0.9540845191938117,
+    "technology": 0.99999976999137,
+    "organization": 0.9531741223969452,
+    "ethics": 0.9999999395181708
+   }
+  },
+  {
+   "caseId": "t15",
+   "labels": [],
+   "rules": [
+    "ethics"
+   ],
+   "whole": {
+    "communication": 0.000005563791271128982,
+    "math": 5.099508874904985e-8,
+    "problem": 0.0006046601003784755,
+    "self": 0.010063978375893927,
+    "resource": 2.6755624413308373e-7,
+    "interpersonal": 4.828583625329872e-10,
+    "information": 0.0036523533370501357,
+    "technology": 0.027988007154724878,
+    "organization": 1.6317386979304501e-9,
+    "ethics": 0.0000029564036984436626
+   }
+  },
+  {
+   "caseId": "t16",
+   "labels": [
+    "problem",
+    "self",
+    "information",
+    "technology",
+    "ethics"
+   ],
+   "rules": [
+    "technology",
+    "problem",
+    "self"
+   ],
+   "whole": {
+    "communication": 0.9999998131113347,
+    "math": 0.9999998983653651,
+    "problem": 0.9999999918677323,
+    "self": 0.999999980261585,
+    "resource": 0.9999756368296681,
+    "interpersonal": 0.9947049986564859,
+    "information": 0.9999999266081959,
+    "technology": 0.9999999981032089,
+    "organization": 0.9999855175629588,
+    "ethics": 0.9999999902587184
+   }
+  },
+  {
+   "caseId": "t17",
+   "labels": [
+    "communication",
+    "information",
+    "ethics"
+   ],
+   "rules": [
+    "communication",
+    "problem",
+    "information",
+    "technology"
+   ],
+   "whole": {
+    "communication": 0.9987748384067348,
+    "math": 0.9847749794382129,
+    "problem": 0.9999989780203837,
+    "self": 0.9999996062854841,
+    "resource": 0.9998547845653678,
+    "interpersonal": 0.0024343151629739046,
+    "information": 0.9999993063253371,
+    "technology": 0.9999999882966943,
+    "organization": 0.9996665929717274,
+    "ethics": 0.9999925349053265
+   }
+  },
+  {
+   "caseId": "t18",
+   "labels": [
+    "communication",
+    "organization",
+    "ethics"
+   ],
+   "rules": [
+    "self"
+   ],
+   "whole": {
+    "communication": 0.9486612623739155,
+    "math": 0.000002632513600220048,
+    "problem": 0.9095189492287582,
+    "self": 0.9999930711441674,
+    "resource": 0.0943379918907994,
+    "interpersonal": 0.00031959703427628556,
+    "information": 0.07808925533093221,
+    "technology": 0.9980694836321318,
+    "organization": 0.9999999039735886,
+    "ethics": 0.9999997396532867
+   }
+  },
+  {
+   "caseId": "t19",
+   "labels": [
+    "communication",
+    "problem",
+    "self",
+    "resource",
+    "ethics"
+   ],
+   "rules": [
+    "technology"
+   ],
+   "whole": {
+    "communication": 0.6518181357760243,
+    "math": 0.3015328731721038,
+    "problem": 0.9999975499111494,
+    "self": 0.9999998865145446,
+    "resource": 0.9999860925312702,
+    "interpersonal": 0.19402812872141498,
+    "information": 0.8644074555923019,
+    "technology": 0.9999999893534157,
+    "organization": 0.009176844568072202,
+    "ethics": 0.9999930037910912
+   }
+  },
+  {
+   "caseId": "t20",
+   "labels": [
+    "technology",
+    "ethics"
+   ],
+   "rules": [
+    "technology",
+    "ethics"
+   ],
+   "whole": {
+    "communication": 3.2018719863789163e-7,
+    "math": 3.5073826232600435e-10,
+    "problem": 6.115858167552396e-10,
+    "self": 1.2604320831736445e-8,
+    "resource": 1.3599249032481798e-9,
+    "interpersonal": 4.738435998910868e-9,
+    "information": 9.969825510459976e-10,
+    "technology": 1.3274883019610747e-8,
+    "organization": 4.980633470402745e-10,
+    "ethics": 1.3732214107149362e-8
+   }
+  }
+ ]
+}

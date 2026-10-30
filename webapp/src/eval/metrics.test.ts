@@ -15,7 +15,7 @@ describe("검증 자료", () => {
 });
 
 describe("역량 찾기 지표", () => {
-  it("정확도·재현율을 0~1로 계산", () => {
+  it("정밀도·재현율을 0~1로 계산", () => {
     const r = competencyEval(ds.cases);
     expect(r.precision).toBeGreaterThan(0);
     expect(r.precision).toBeLessThanOrEqual(1);

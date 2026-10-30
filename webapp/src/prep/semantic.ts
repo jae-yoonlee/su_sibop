@@ -63,3 +63,16 @@ export async function findAll(resume: string): Promise<{ ids: string[]; mode: "m
   const sents = sentences(resume);
   return { ids: [...ids, ...rest.filter((id) => passes(id, best.get(id)?.score ?? 0, sents))], mode };
 }
+
+/** 새 AI 판정 후보용: 역량마다 예시 문장과 뜻이 가까운 자소서 문장 위에서 k개 (점수 기준 없음). 모델을 못 받았으면 빈 목록 */
+export async function semTop(resume: string, ids: string[], k = 3): Promise<SemScore[]> {
+  const sents = sentences(resume);
+  const protos = ids.flatMap((id) => PROTOTYPES[id].map((p) => ({ id, p })));
+  if (!sents.length || !protos.length) return [];
+  const { sim, mode } = await similarity(protos.map((x) => x.p), sents);
+  if (mode !== "model") return [];
+  return ids.flatMap((id) => {
+    const per = sents.map((s, j) => ({ s, v: Math.max(...protos.flatMap((x, i) => (x.id === id ? [sim[i][j]] : []))) }));
+    return per.sort((a, b) => b.v - a.v).slice(0, k).map((x) => ({ id, score: Math.round(x.v * 1000) / 1000, sentence: x.s, passed: passes(id, x.v, sents) }));
+  });
+}

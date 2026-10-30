@@ -4,7 +4,7 @@
 //   npx vite-node scripts/ollama-fc.ts -- --model qwen3:1.7b
 //   npx vite-node scripts/ollama-fc.ts -- --model exaone3.5:7.8b
 //   npx vite-node scripts/ollama-fc.ts -- --score-only        (Ollama 없이, 저장된 결과와 기존 yes/no 결과만 채점)
-//   ... --gold 합의                                            (합의 정답으로 채점, 기본은 여진 정답)
+//   ... --gold 여진                                            (여진 1차 정답으로 채점, 기본은 합의 정답)
 // 결과: _work/fc_<모델>.json (문장 하나 끝날 때마다 저장, 다시 실행하면 이어서 함), _work/fc_요약.md
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { COMPETENCIES, findCompetencies } from "../src/prep/competency";
@@ -22,8 +22,8 @@ const OLD = "../eval/results/2026-10-29_역량판정_일반화";
 const fileOf = (m: string) => `_work/fc_${m.replace(/[^\w.-]/g, "_")}.json`;
 
 const ds = JSON.parse(readFileSync("../data/eval/cases_holdout.json", "utf8")) as { cases: { id: string; resume: string; labels: string[] }[] };
-// --gold 합의: 여진·재윤 라벨이 갈린 칸을 다시 정한 정답(라벨지_holdout_합의.csv)으로 채점. 기본은 여진 정답(cases_holdout.json)
-const GOLD = opt("--gold", "여진");
+// 정답: 기본은 합의 정답(라벨지_holdout_합의.csv, 2026-10-30 최종). --gold 여진이면 여진 1차 정답(cases_holdout.json)
+const GOLD = opt("--gold", "합의");
 if (GOLD !== "여진") {
   const rows = readFileSync(`../data/eval/라벨지_holdout_${GOLD}.csv`, "utf8").replace(/^\uFEFF/, "").trim().split(/\r?\n/).map((l) => l.split(","));
   const head = rows[0];

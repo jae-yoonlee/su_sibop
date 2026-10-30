@@ -4,6 +4,7 @@
 //   npx vite-node scripts/ollama-fc.ts -- --model qwen3:1.7b
 //   npx vite-node scripts/ollama-fc.ts -- --model exaone3.5:7.8b
 //   npx vite-node scripts/ollama-fc.ts -- --score-only        (Ollama 없이, 저장된 결과와 기존 yes/no 결과만 채점)
+//   ... --gold 합의                                            (합의 정답으로 채점, 기본은 여진 정답)
 // 결과: _work/fc_<모델>.json (문장 하나 끝날 때마다 저장, 다시 실행하면 이어서 함), _work/fc_요약.md
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { COMPETENCIES, findCompetencies } from "../src/prep/competency";
@@ -21,6 +22,16 @@ const OLD = "../eval/results/2026-10-29_역량판정_일반화";
 const fileOf = (m: string) => `_work/fc_${m.replace(/[^\w.-]/g, "_")}.json`;
 
 const ds = JSON.parse(readFileSync("../data/eval/cases_holdout.json", "utf8")) as { cases: { id: string; resume: string; labels: string[] }[] };
+// --gold 합의: 여진·재윤 라벨이 갈린 칸을 다시 정한 정답(라벨지_holdout_합의.csv)으로 채점. 기본은 여진 정답(cases_holdout.json)
+const GOLD = opt("--gold", "여진");
+if (GOLD !== "여진") {
+  const rows = readFileSync(`../data/eval/라벨지_holdout_${GOLD}.csv`, "utf8").replace(/^\uFEFF/, "").trim().split(/\r?\n/).map((l) => l.split(","));
+  const head = rows[0];
+  for (const r of rows.slice(1)) {
+    const c = ds.cases.find((x) => x.id === r[0]);
+    if (c) c.labels = head.slice(1).filter((_, i) => r[i + 1] === "1");
+  }
+}
 const IDS = COMPETENCIES.map((c) => c.id);
 const rulesOf = new Map(ds.cases.map((c) => [c.id, findCompetencies(c.resume, true).map((h) => h.id)]));
 
@@ -101,7 +112,7 @@ function score() {
   const rule = count(cs0, Infinity);
   const allYes = count(cs0, -Infinity);
   const lines = [
-    `# 역량 판정: 강제선택 vs yes/no (새 자소서 20개, 칸 200개, 정답 54칸)`,
+    `# 역량 판정: 강제선택 vs yes/no (새 자소서 20개, 칸 200개, ${GOLD} 정답 ${ds.cases.reduce((n, c) => n + c.labels.length, 0)}칸)`,
     ``,
     `- 문턱은 자소서를 홀짝으로 나눠 한쪽에서 정하고 다른 쪽에서 잼 (두 번 바꿔 합침). 괄호는 자소서 단위 부트스트랩 95% 구간.`,
     `- 칸 AUC: 칸(자소서×역량)마다 점수 하나(규칙이 찾은 칸은 최고점). 후보에 안 뽑힌 정답 칸도 포함하므로 10/29 보고서의 후보 문장 AUC와 값이 다름.`,

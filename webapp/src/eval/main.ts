@@ -3,7 +3,7 @@
 import "../styles.css";
 import "./eval.css";
 import type { WebWorkerMLCEngine } from "@mlc-ai/web-llm";
-import { createEngine, currentModel, fcAskerFor, generateQuestions, preloadLlm, yesNoAsker, yesNoAskerFor } from "../prep/llm";
+import { createEngine, currentModel, fcAskerFor, generateQuestions, llmState, preloadLlm, yesNoAsker, yesNoAskerFor } from "../prep/llm";
 import { fcScores, judgeFC, type FcSentence } from "../prep/judgeFC";
 import { bootstrap, cellAuc, count, crossCount, type Cell } from "./cells";
 import { calibrate, combined, decideV2, judgeIds, judgeIdsV2, V2, type Judgment, type JudgmentV2 } from "../prep/judge";
@@ -127,7 +127,7 @@ async function runJudge() {
   }
   if (!ask) {
     S.judge = null;
-    alert("이 PC에서는 AI를 쓸 수 없어요 (WebGPU 필요)");
+    noAi();
     return render();
   }
   const t0 = performance.now();
@@ -219,7 +219,7 @@ async function runCompare() {
   let own: Awaited<ReturnType<typeof createEngine>> | null = null;
   if (S.judgeModel) {
     model = modelId(S.judgeModel);
-    own = await createEngine(model, (r) => ((S.cmp = `${S.judgeModel} 불러오는 중… ${Math.round(r.progress * 100)}%`), render())).catch(() => null);
+    own = await createEngine(model, (r) => ((S.cmp = `${S.judgeModel} 불러오는 중… ${Math.round(r.progress * 100)}%`), render())).catch(keepErr);
     ask = own && yesNoAskerFor(own);
   } else {
     ask = (await preloadLlm()) && yesNoAsker();
@@ -227,7 +227,7 @@ async function runCompare() {
   }
   if (!ask) {
     S.cmp = null;
-    alert("이 PC에서는 AI를 쓸 수 없어요 (WebGPU 필요)");
+    noAi();
     return render();
   }
   let hold: Dataset | null = null;
@@ -299,6 +299,15 @@ function showResult(sv: Saved) {
 // ── 강제선택 측정 (2026-10-30): 앱과 같은 브라우저 안 Qwen으로, 시험용 20개를 문장마다 "역량 하나 또는 없음"으로 묻는다 ──
 // 정답은 합의 정답(holdout_gold.csv). 통과 기준: 자소서체(t01~t10) 칸 AUC가 EXAONE 7.8B yes/no의 0.74를 넘는가
 const FC_KEY = "sibop-eval-fc-v1";
+/** AI를 못 띄운 진짜 이유를 보여 준다 (예전엔 저장소 오류도 전부 "WebGPU 필요"로 나왔음) */
+let engineErr = "";
+function noAi() {
+  const why = engineErr || (llmState.kind === "unsupported" || llmState.kind === "error" ? llmState.reason : "");
+  engineErr = "";
+  alert(`AI 모델을 못 띄웠어요${why ? `: ${why}` : ""}`);
+}
+const keepErr = (err: unknown) => ((engineErr = (err as Error).message), null);
+
 const FC_BAR = 0.74;
 type FcSaved = { model: string; cases: Record<string, FcSentence[]>; ms: number; gold?: Record<string, string[]>; rules?: Record<string, string[]> };
 function fcLoad(): FcSaved | null {
@@ -338,12 +347,12 @@ async function runFC() {
   let e: WebWorkerMLCEngine | null = null;
   let own = false;
   if (S.judgeModel) {
-    e = await createEngine(modelId(S.judgeModel), (r) => ((S.fc = `${S.judgeModel} 불러오는 중… ${Math.round(r.progress * 100)}%`), render())).catch(() => null);
+    e = await createEngine(modelId(S.judgeModel), (r) => ((S.fc = `${S.judgeModel} 불러오는 중… ${Math.round(r.progress * 100)}%`), render())).catch(keepErr);
     own = true;
   } else e = await preloadLlm();
   if (!e) {
     S.fc = null;
-    alert("이 PC에서는 AI를 쓸 수 없어요 (WebGPU 필요)");
+    noAi();
     return render();
   }
   const model = S.judgeModel ? modelId(S.judgeModel) : currentModel();
@@ -361,7 +370,16 @@ async function runFC() {
     if (cases[c.id]) continue;
     S.fc = `판정 중… ${i + 1}/${hold.cases.length} (${c.id})`;
     render();
-    cases[c.id] = await judgeFC(c.resume, ask);
+    const js = await judgeFC(c.resume, ask);
+    const bad = js.find((j) => j.raw.startsWith("오류"));
+    if (bad) {
+      // GPU 장치가 끊기면(Device was lost) 남은 문장이 전부 오류로 순식간에 끝난다. 저장하지 않고 멈춘다
+      S.fc = null;
+      alert(`${c.id} 판정 중 ${bad.raw}\n이 자소서는 저장하지 않았어요. 같은 오류가 반복되면 이 PC에서는 이 모델을 쓸 수 없어요.`);
+      if (own) await e.unload().catch(() => {});
+      return render();
+    }
+    cases[c.id] = js;
     fcStore({ model, cases, ms: performance.now() - t0 });
   }
   if (own) await e.unload();

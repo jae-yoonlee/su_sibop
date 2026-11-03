@@ -101,6 +101,7 @@ function resetRun() {
   S.transcripts = [];
   S.sttFixes = [];
   S.asked = [];
+  resetReplay();
   S.clips.forEach((u) => u && URL.revokeObjectURL(u));
   S.clips = [];
   S.recError = "";
@@ -385,7 +386,7 @@ async function runFeedback() {
   if (S.phase === "result") render();
   const counts = new Map<string, number>();
   S.results.forEach((r) => r.alerts.forEach((a) => counts.set(a.label, (counts.get(a.label) ?? 0) + a.count)));
-  const facts = typeof S.facts === "object" && S.facts ? S.facts.rows.filter((r) => !S.factOff.has(r.id)) : [];
+  const facts = typeof S.facts === "object" && S.facts ? S.facts.rows.filter((r) => r.kind !== "숫자" && !S.factOff.has(r.id)) : [];
   const comps = typeof S.answerComp === "object" && S.answerComp ? S.answerComp.rows : [];
   S.feedback = await makeFeedback(
     {
@@ -422,8 +423,9 @@ function factsHtml() {
   const head = `<h2>자소서와 답변 맞춰 보기</h2>`;
   if (S.sttMode === "none") return `${head}<div class="muted">받아쓰기가 안 돼서 맞춰 볼 수 없어요.</div>`;
   if (S.facts === null || S.facts === "running") return `${head}<div class="muted">자소서와 답변을 맞춰 보고 있어요…</div>`;
-  const { rows } = S.facts;
-  if (!rows.length) return `${head}<div class="muted">자소서에서 기간, 숫자, 역할, 프로젝트 이름을 찾지 못했어요.</div>`;
+  // 2026-11-03 사용자 요청: 숫자(성과 수치)는 맞춰 보기에서 뺀다. 기간·역할·프로젝트만
+  const rows = S.facts.rows.filter((r) => r.kind !== "숫자");
+  if (!rows.length) return `${head}<div class="muted">자소서에서 기간, 역할, 프로젝트 이름을 찾지 못했어요.</div>`;
   const used = rows.filter((r) => !S.factOff.has(r.id));
   const count = (v: string) => used.filter((r) => r.verdict === v).length;
   const tr = rows
@@ -479,17 +481,43 @@ function evidenceHtml() {
     .join("");
   return `<h2>경고 장면 다시보기 <span class="badge">${clips.length}개</span></h2>
     <p class="muted">경고가 뜨기 ${CLIP_LEAD_SEC}초 전부터 보여 줘요. 영상은 저장되지 않고 창을 닫으면 사라져요.</p>
-    <div class="replay"><div class="player"><video id="replay" playsinline controls></video><div class="now" id="replay-now">장면을 고르거나 '전체 이어보기'를 눌러 보세요</div></div>
+    <div class="replay"><div id="replay-slot"></div>
     <div class="clips"><button class="btn-primary" id="play-all">▶ 전체 이어보기</button>${cards}</div></div>`;
 }
 
-// 다시보기 재생기: 클립 하나 또는 전체를 순서대로, 클립 끝에서 멈추거나 다음으로 넘어감
+// 다시보기 재생기: 클립 하나 또는 전체를 순서대로, 클립 끝에서 멈추거나 다음으로 넘어감.
+// 2026-11-03 "경고 장면이 다시 안 보임": 결과 화면은 받아쓰기·사실 대조·종합 피드백이 끝날 때마다 다시 그려지는데,
+// 그때마다 영상 칸도 새로 만들어져 보던 장면이 사라지고 처음 상태로 돌아갔다. 영상 칸은 한 번만 만들고 다시 그릴 때 옮겨 끼운다.
 let clipQueue: number[] = [];
 let clipList: Clip[] = [];
+let clipOn = -1;
+let player: HTMLDivElement | null = null;
+function replayPlayer(): HTMLDivElement {
+  if (player) return player;
+  player = document.createElement("div");
+  player.className = "player";
+  player.innerHTML = `<video playsinline controls></video><div class="now">장면을 고르거나 '전체 이어보기'를 눌러 보세요</div>`;
+  const v = player.querySelector("video")!;
+  const advance = () => {
+    v.pause();
+    delete v.dataset.to;
+    const next = clipQueue.shift();
+    if (next !== undefined) void playClip(next);
+  };
+  v.addEventListener("timeupdate", () => v.dataset.to && v.currentTime >= Number(v.dataset.to) - 0.05 && advance());
+  v.addEventListener("ended", () => v.dataset.to && advance());
+  return player;
+}
+function resetReplay() {
+  player?.querySelector("video")?.removeAttribute("src");
+  player = null;
+  clipQueue = [];
+  clipOn = -1;
+}
 async function playClip(k: number) {
   const c = clipList[k];
-  const v = $<HTMLVideoElement>("#replay");
-  if (!v) return;
+  const v = player?.querySelector("video");
+  if (!c || !v) return;
   const url = S.clips[c.q]!;
   if (v.dataset.q !== String(c.q)) {
     v.src = url;
@@ -499,24 +527,18 @@ async function playClip(k: number) {
   }
   v.currentTime = c.from;
   v.dataset.to = String(c.to);
+  clipOn = k;
   app.querySelectorAll<HTMLElement>(".clip").forEach((el) => el.classList.toggle("on", el.dataset.k === String(k)));
-  const now = $("#replay-now");
+  const now = player!.querySelector(".now");
   if (now) now.textContent = `질문 ${c.q + 1}, ${c.names.map((n) => ALERT_PROBLEMS[n]).join(", ")} (${mmss(c.from)}–${mmss(c.to)})`;
   void v.play();
 }
 function bindReplay() {
-  const v = $<HTMLVideoElement>("#replay");
-  if (!v) return;
+  const slot = $("#replay-slot");
+  if (!slot) return;
+  slot.replaceWith(replayPlayer());
   clipList = buildClips();
-  clipQueue = [];
-  const advance = () => {
-    v.pause();
-    delete v.dataset.to;
-    const next = clipQueue.shift();
-    if (next !== undefined) void playClip(next);
-  };
-  v.addEventListener("timeupdate", () => v.dataset.to && v.currentTime >= Number(v.dataset.to) - 0.05 && advance());
-  v.addEventListener("ended", () => v.dataset.to && advance());
+  app.querySelectorAll<HTMLElement>(".clip").forEach((el) => el.classList.toggle("on", el.dataset.k === String(clipOn)));
   app.querySelectorAll<HTMLButtonElement>(".clip").forEach((b) =>
     b.addEventListener("click", () => {
       clipQueue = [];
@@ -538,7 +560,7 @@ function coverageHtml() {
   return `<div class="card-dark" style="margin-bottom:16px">
     <h2 style="margin-top:0">회사가 원하는 역량과 내 자소서 <span class="badge">${p.coverage.length}개 중 ${hit}개 근거 후보</span></h2>
     <table><tr><th>필요한 역량</th><th>채용공고에서</th><th>자소서 근거 후보</th></tr>
-    ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? `${c.evidence ? `<div class="fact-src">“${esc(c.evidence)}”</div>` : ""}<small class="muted">찾은 말: ${esc(c.found.join(", "))}</small>` : "<span style='color:var(--magenta)'>근거 문장을 못 찾았어요</span>"}</td></tr>`).join("")}
+    ${p.coverage.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.reason)}</td><td>${c.found.length ? `${c.evidence ? `<div class="fact-src">“${esc(c.evidence)}”</div>` : "<span class='muted'>근거 문장 후보 없음</span>"}` : "<span style='color:var(--magenta)'>근거 문장을 못 찾았어요</span>"}</td></tr>`).join("")}
     </table>
     <p class="muted">자동으로 고른 후보예요. 틀릴 수 있으니 문장을 읽고 이 역량이 행동으로 드러나는지 직접 확인해 주세요. 못 찾은 역량은 자소서에 돌려 말했을 수도 있어요.</p>
   </div>`;

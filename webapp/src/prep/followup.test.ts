@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAiFollowup, chooseIssue, findIssues, followupPrompt, makeFollowup, templateQuestion, COACHING } from "./followup";
+import { checkAiFollowup, chooseIssue, findIssues, followupPrompt, makeFollowup, shortQuote, templateQuestion, COACHING } from "./followup";
 import type { Question } from "./questions";
 
 // poc/face-realtime/test_followup_gen.py와 같은 예시
@@ -133,5 +133,27 @@ describe("답하는 방법을 시키는 질문 막기 (2026-10-19)", () => {
         expect(COACHING.test(q), q).toBe(false);
       }
     void rand;
+  });
+});
+
+describe("11/3 실사용 질문 문장", () => {
+  it("인용은 '…'로 자르지 않고 원래 문장 끝으로 끝난다", () => {
+    const q = shortQuote("제가 한 역할은 팀원들을 전체적으로 통과하면서 해당 부분의 일정을 조율하고 마감을 지키게 했습니다");
+    expect(q).not.toMatch(/…|\.\.\./);
+    expect(q.endsWith("했습니다")).toBe(true);
+    expect(q.length).toBeLessThanOrEqual(32);
+  });
+  it("꼬리질문 틀 문장은 '자세히 말씀해 주세요' 요청이고 잘린 인용이 없다", () => {
+    for (const name of ["no_result", "no_role", "team_heavy", "vague", "generic", "no_text"] as const)
+      for (const r of [0, 0.99]) {
+        const q = templateQuestion({ name, slots: { quote: "우리가 열심히 했습니다" } }, () => r);
+        expect(q).toMatch(/자세히 말씀해 주세요\.$/);
+        expect(q).not.toMatch(/…|말했나요/);
+      }
+  });
+  it("AI가 '직접 말했나요?', '지원자 답변', 잘린 인용을 쓰면 떨어뜨린다", () => {
+    const issue = { name: "generic" as const, slots: { quote: "정보들이 너무 많이 나와서" } };
+    expect(() => checkAiFollowup(`{"question":"지원자 답변에서 '받게 되면 정보들이 너무 많이 나와서' 부분을 직접 말했나요?"}`, issue, MAIN, "정보들이 너무 많이 나와서 힘들었습니다")).toThrow();
+    expect(() => checkAiFollowup(`{"question":"'정보들이 너무 많이 나와서 해당...'라고 하셨는데 어려웠던 점은 무엇이었나요?"}`, issue, MAIN, "정보들이 너무 많이 나와서 힘들었습니다")).toThrow("자름");
   });
 });

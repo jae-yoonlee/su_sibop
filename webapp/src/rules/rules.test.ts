@@ -87,7 +87,7 @@ describe("자세 규칙", () => {
     const r = new PostureRules(base);
     const moved = { ...CENTER, cx: 0.63 };
     let out: string[] = [];
-    run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 25, pitch: 0 }, info(), moved)));
+    run(0, 3.5, 0.05, (t) => (out = r.update(t, { yaw: 25, pitch: 0 }, info(), moved)));
     expect(out).toContain("shift");
     expect(out).not.toContain("turn");
   });
@@ -103,9 +103,22 @@ describe("자세 규칙", () => {
   it("위아래로 움직여도 shift", () => {
     const r = new PostureRules(base);
     let out: string[] = [];
-    run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, cy: CENTER.cy + 0.15 })));
+    run(0, 3.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, cy: CENTER.cy + 0.19 })));
     expect(out).toContain("shift");
-    expect(r.shiftBy.y).toBeGreaterThan(2);
+    expect(r.shiftBy.y).toBeGreaterThan(3);
+  });
+
+  it("11/3 완화: 위아래 15%·앞뒤 30%·가로 10%는 shift 아님, 2초만 벗어나도 shift 아님", () => {
+    for (const box of [{ ...CENTER, cy: CENTER.cy + 0.15 }, { ...CENTER, w: CENTER.w * 1.3 }, { ...CENTER, cx: CENTER.cx + 0.1 }]) {
+      const r = new PostureRules(base);
+      let out: string[] = [];
+      run(0, 4, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), box)));
+      expect(out).not.toContain("shift");
+    }
+    const r = new PostureRules(base);
+    let out: string[] = [];
+    run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, cy: CENTER.cy + 0.19 })));
+    expect(out).not.toContain("shift");
   });
 
   it("글 읽듯 조금 끄덕이거나 기울면 shift 아님 (여진 검증 오경보)", () => {
@@ -118,7 +131,7 @@ describe("자세 규칙", () => {
   it("앞뒤로 크게 움직이면 shift", () => {
     const r = new PostureRules(base);
     let out: string[] = [];
-    run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, w: 0.4 })));
+    run(0, 3.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, w: 0.44 })));
     expect(out).toContain("shift");
   });
 
@@ -133,7 +146,7 @@ describe("자세 규칙", () => {
   it("거리가 실제로 크게 바뀌면 shift", () => {
     const r = new PostureRules({ ...base, box: { ...CENTER, z: 50 } });
     let out: string[] = [];
-    run(0, 2.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, z: 65 })));
+    run(0, 3.5, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info(), { ...CENTER, z: 90 })));
     expect(out).toContain("shift");
   });
 
@@ -207,10 +220,10 @@ describe("음성", () => {
   });
 
   it("숨소리·잡음 수준의 작은 소리는 침묵을 끊지 않음", () => {
-    // 목소리 기준 -20dB. 소리 -46dB는 소음(-60dB)의 5배라 예전엔 '말함'이었지만, 목소리보다 26dB 작음
-    const r = new VoiceRules({ ...vb, voiceDb: -20 }, 0);
+    // 목소리 기준 -20dB. 소리 -64dB는 소음(-80dB)의 6배라 음량으로는 '말함'이지만, 목소리보다 40dB 넘게 작음 (11/3: 20dB → 40dB로 완화)
+    const r = new VoiceRules({ noiseRms: 0.0001, noiseDb: -80, voiceDb: -20 }, 0);
     let out: string[] = [];
-    run(0, 5.5, 0.03, (t) => (out = r.update(t, 0.005)));
+    run(0, 5.5, 0.03, (t) => (out = r.update(t, 0.0006)));
     expect(out).toContain("stuck");
   });
 
@@ -288,11 +301,14 @@ describe("음성", () => {
     expect(silero.sileroBlocks).toBe(silero.blocks);
   });
 
-  it("Silero 모드: 말소리라도 내 목소리보다 20dB 넘게 작으면(먼 데 말소리) 침묵 유지", () => {
+  it("Silero 모드: 말소리라도 내 목소리보다 40dB 넘게 작으면(먼 데 말소리) 침묵 유지, 30dB 작은 말은 내 말", () => {
     const r = new VoiceRules(vb, 0);
     let out: string[] = [];
-    run(0, 5.5, 0.03, (t) => (out = r.update(t, 0.002, true))); // -54dB
+    run(0, 5.5, 0.03, (t) => (out = r.update(t, 0.0002, true))); // -74dB
     expect(out).toContain("stuck");
+    const soft = new VoiceRules(vb, 0);
+    run(0, 5.5, 0.03, (t) => (out = soft.update(t, 0.001, true))); // -60dB: 예전 기준(20dB)이면 침묵
+    expect(out).not.toContain("stuck");
     const me = new VoiceRules(vb, 0);
     run(0, 3, 0.03, (t) => me.update(t, 0.001, false));
     run(3.03, 5.5, 0.03, (t) => (out = me.update(t, VOICE, true)));
@@ -429,7 +445,7 @@ describe("남의 목소리 거르기", () => {
   it("말소리가 들려도 입이 안 움직이면 침묵이 끊기지 않는다", () => {
     const v = new VoiceRules(base, 0);
     let a: string[] = [];
-    for (let t = 0; t <= 6; t += 0.03) a = v.update(t, loud, true, 0.01);
+    for (let t = 0; t <= 7; t += 0.03) a = v.update(t, loud, true, 0.01);
     expect(a).toContain("stuck");
     expect(v.otherVoiceSec).toBeGreaterThan(5);
   });
@@ -437,6 +453,13 @@ describe("남의 목소리 거르기", () => {
     const v = new VoiceRules(base, 0);
     let a: string[] = [];
     for (let t = 0; t <= 6; t += 0.03) a = v.update(t, loud, true, 0.2);
+    expect(a).not.toContain("stuck");
+    expect(v.otherVoiceSec).toBe(0);
+  });
+  it("말하다 입이 1초 안 되게 멈추거나 작게 움직이면 내 말로 본다 (11/3 실사용 '말하는데 말 끊김')", () => {
+    const v = new VoiceRules(base, 0);
+    let a: string[] = [];
+    for (let t = 0; t <= 8; t += 0.03) a = v.update(t, loud, true, t % 1.5 < 0.8 ? 0.01 : 0.03);
     expect(a).not.toContain("stuck");
     expect(v.otherVoiceSec).toBe(0);
   });

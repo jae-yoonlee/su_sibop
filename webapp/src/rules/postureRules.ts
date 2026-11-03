@@ -1,7 +1,7 @@
 // 자세 규칙: 얼굴 안 보임·고개 돌림·숙임(step3_coaching.CoachRules), 자리 이동(coach_engine), 중앙 이탈·눈동자·딴 곳 보기(웹에서 추가).
 import {
   CENTER_X_TOL, CENTER_Y_RANGE, FACE_GAP_SEC, GAZE_BASE_RATIO, GAZE_BLINK_SKIP, GAZE_MIN_STD, GAZE_WINDOW_SEC,
-  HOLD_SEC, LOOK_EYE_TOL, LOOK_HEAD_DEG, LOOK_HOLD_SEC, MIN_SHOW_SEC, PITCH_LIMIT, SHIFT_SIZE_RATIO, SHIFT_TOL, SHIFT_Y_TOL, YAW_LIMIT,
+  HOLD_SEC, LOOK_EYE_TOL, LOOK_HEAD_DEG, LOOK_HOLD_SEC, MIN_SHOW_SEC, PITCH_LIMIT, SHIFT_HOLD_SEC, SHIFT_SIZE_RATIO, SHIFT_TOL, SHIFT_Y_TOL, YAW_LIMIT,
 } from "./constants";
 import { EventTracker } from "./events";
 import type { FaceBox, FaceInfo } from "./face";
@@ -123,7 +123,7 @@ export class PostureRules {
       look: this.hold("look", face && !yawOk && this.looking(angles!, info), t, gap),
       gaze: this.hold("gaze", face && this.gazeShaky(t, info), t, gap),
     };
-    for (const [k, sec] of Object.entries(this.held)) if (sec >= (k === "look" ? LOOK_HOLD_SEC : HOLD_SEC)) this.lastOn.set(k, t);
+    for (const [k, sec] of Object.entries(this.held)) if (sec >= (k === "look" ? LOOK_HOLD_SEC : k === "shift" ? SHIFT_HOLD_SEC : HOLD_SEC)) this.lastOn.set(k, t);
     const active = ORDER.filter((k) => this.lastOn.has(k) && t - this.lastOn.get(k)! < MIN_SHOW_SEC);
     this.tracker.track(active, t);
     return active;

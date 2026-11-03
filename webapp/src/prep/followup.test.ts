@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAiFollowup, chooseIssue, findIssues, followupPrompt, makeFollowup, shortQuote, templateQuestion, COACHING } from "./followup";
+import { checkAiFollowup, chooseIssue, findIssues, followupPrompt, factContext, makeFollowup, shortQuote, templateQuestion, COACHING } from "./followup";
 import type { Question } from "./questions";
 
 // poc/face-realtime/test_followup_gen.py와 같은 예시
@@ -55,9 +55,9 @@ describe("꼬리질문 규칙: 답변의 빈 곳", () => {
   });
   it("정해진 문장: 숫자 두 개와 받침에 맞는 조사", () => {
     const q = templateQuestion(chooseIssue(findIssues(MAIN, ANSWER), first), first);
-    expect(q).toBe("자기소개서에는 12%라고 쓰셨는데 방금 20%라고 하셨습니다. 어느 쪽이 맞나요?");
-    const q2 = templateQuestion({ name: "missing_fact", slots: { doc: "6개월", quote: "제가 팀장을 맡았습니다" } }, first);
-    expect(q2).toBe("'제가 팀장을 맡았습니다'라고 하셨는데, 자기소개서에 적은 6개월과는 어떻게 이어지나요?");
+    expect(q).toBe("자기소개서에는 '6개월 동안 팀장을 맡아 배송 지연률을 12% 줄였습니다'라고 쓰셨는데 방금 20%라고 하셨습니다. 어느 쪽이 맞나요?");
+    const q2 = templateQuestion(findIssues(MAIN, "제가 팀장으로 지연률을 12% 줄였습니다.").find((i) => i.name === "missing_fact")!, first);
+    expect(q2).toBe("자기소개서에 '6개월 동안 팀장을 맡아 배송 지연률을 12% 줄였습니다'라고 쓰셨는데, 그 6개월 동안 정확히 어떤 일을 하셨는지 자세히 말씀해 주세요.");
   });
 });
 
@@ -82,6 +82,13 @@ describe("꼬리질문 AI 검사", () => {
   it("숫자 확인인데 그 숫자를 안 물으면 떨어짐", () => {
     const miss = { name: "missing_fact" as const, slots: { doc: "6개월" } };
     expect(() => checkAiFollowup('{"question":"그때 본인 역할은 무엇이었나요?"}', miss, MAIN, "제가 12% 줄였습니다.")).toThrow("숫자");
+  });
+  it("11/3: 숫자만 떼어 물으면('6개월이 뭡니까?') 떨어지고, 활동을 함께 말하면 통과", () => {
+    const miss = findIssues(MAIN, "제가 팀장으로 지연률을 12% 줄였습니다.").find((i) => i.name === "missing_fact")!;
+    const ans = "제가 팀장으로 지연률을 12% 줄였습니다.";
+    expect(() => checkAiFollowup('{"question":"6개월이 뭡니까?"}', miss, MAIN, ans)).toThrow();
+    expect(() => checkAiFollowup('{"question":"그 6개월 동안 정확히 무엇을 하셨는지 말씀해 주세요."}', miss, MAIN, ans)).toThrow("활동");
+    expect(checkAiFollowup('{"question":"배송 지연률을 줄인 6개월 동안 팀장으로서 정확히 어떤 일을 하셨나요?"}', miss, MAIN, ans)).toContain("지연률");
   });
 });
 
@@ -129,7 +136,7 @@ describe("답하는 방법을 시키는 질문 막기 (2026-10-19)", () => {
     const names = ["mismatch", "missing_fact", "no_result", "no_role", "team_heavy", "vague", "generic", "no_text"] as const;
     for (const name of names)
       for (const r of [0, 0.99]) {
-        const q = templateQuestion({ name, slots: { quote: "우리가 열심히 했습니다", doc: "12%", said: "20%" } }, () => r);
+        const q = templateQuestion({ name, slots: { quote: "우리가 열심히 했습니다", doc: "12%", said: "20%", ctx: "지연률을 12% 줄였습니다", ask: "그 12% 결과가 어떻게 나왔는지 자세히 말씀해 주세요." } }, () => r);
         expect(COACHING.test(q), q).toBe(false);
       }
     void rand;
@@ -137,6 +144,11 @@ describe("답하는 방법을 시키는 질문 막기 (2026-10-19)", () => {
 });
 
 describe("11/3 실사용 질문 문장", () => {
+  it("자소서 숫자 문맥: 숫자가 든 마디부터 문장 끝까지", () => {
+    expect(factContext("저는 스마트팩토리 동아리에서 6주 동안 시간대별 불량 데이터를 모으며 공정 개선안을 만들었습니다.", "6", "주")).toBe("스마트팩토리 동아리에서 6주 동안 시간대별 불량 데이터를 모으며 공정 개선안을 만들었습니다".length <= 50 ? "스마트팩토리 동아리에서 6주 동안 시간대별 불량 데이터를 모으며 공정 개선안을 만들었습니다" : expect.stringContaining("6주"));
+    const c = factContext("교내 학술제를 준비하면서 팀원 5명과 매주 회의를 열었고, 6주 동안 시간대별 불량 데이터를 모았습니다. 그 뒤 발표했습니다.", "6", "주");
+    expect(c).toBe("6주 동안 시간대별 불량 데이터를 모았습니다");
+  });
   it("인용은 '…'로 자르지 않고 원래 문장 끝으로 끝난다", () => {
     const q = shortQuote("제가 한 역할은 팀원들을 전체적으로 통과하면서 해당 부분의 일정을 조율하고 마감을 지키게 했습니다");
     expect(q).not.toMatch(/…|\.\.\./);

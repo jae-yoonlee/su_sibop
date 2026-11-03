@@ -38,13 +38,19 @@ export class AnswerRecorder {
 /** MediaRecorder가 만든 webm은 길이 정보가 없어 앞뒤로 옮기기가 안 되는 경우가 있어, 끝까지 한 번 옮겨 길이를 알아낸다 */
 export function fixDuration(video: HTMLVideoElement): Promise<void> {
   return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const done = () => {
       video.removeEventListener("timeupdate", done);
+      video.removeEventListener("durationchange", done);
+      clearTimeout(timer);
       video.currentTime = 0;
       resolve();
     };
     if (Number.isFinite(video.duration)) return resolve();
     video.addEventListener("timeupdate", done);
+    video.addEventListener("durationchange", done);
+    // 어떤 브라우저는 끝으로 옮겨도 알림이 안 와서 장면 재생이 영영 멈춰 있었다 → 2초 뒤엔 그냥 진행 (앞뒤 옮기기만 덜 정확)
+    timer = setTimeout(done, 2000);
     video.currentTime = 1e101;
   });
 }

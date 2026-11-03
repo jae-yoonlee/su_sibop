@@ -91,6 +91,7 @@ ${list}
 - "어떻게 생각하시나요"처럼 막연하게 묻지 않는다.
 - 근거에 없는 경험·숫자를 지어내지 않는다.
 - 끝은 반드시 '~나요?', '~습니까?', '~주세요.' 같은 존댓말 물음. '~했습니다.'로 끝나는 설명문, 반말을 쓰지 않는다.
+- 자기소개서 문장 끝에 '나요?'만 붙이지 않는다 ('~했습니다나요?'는 틀린 말). 인용 뒤에 무엇을 묻는지 따로 쓴다.
 - 상대를 '지원자'라고 부르지 말고 '본인'이라고 한다. 근거에 없는 낱말(재료·도구 이름 등)을 쓰지 않는다.
 - 한 문장, 90자 이내.
 
@@ -121,7 +122,11 @@ export function styleProblem(q: string, sources: string): string {
   // 존댓말 물음(~까?, ~요?) 또는 부탁(~주세요.)만. "~다."로 끝나는 평서문, "~어?/~니?" 반말은 탈락
   if (!/(까|요)\?$|(까요|나요|가요|세요|습니까|ㅂ니까)[?.]?$/.test(q)) return "존댓말 물음이 아님";
   if (/(니|냐|어|야|지)\?$/.test(q)) return "반말";
-  if (/지원자(가|는|께서|님|의)/.test(q)) return "3인칭으로 부름";
+  // 2026-11-03 실사용: "…관리했습니다나요?"처럼 자소서·답변 문장 끝에 '나요?'만 붙인 질문이 나옴
+  if (/(다|니다)(나요|요|습니까)\?$/.test(q)) return "문장 끝에 물음만 붙임";
+  if (/지원자/.test(q)) return "3인칭으로 부름";
+  // "'…' 부분을 직접 말했나요?"처럼 말했는지만 묻는 예/아니오 질문 (내용을 묻지 않음)
+  if (/(말했|말하셨|말씀하셨|언급했|언급하셨|이야기했|이야기하셨|얘기했|얘기하셨)(나요|습니까|어요)\?$/.test(q)) return "말했는지만 물음";
   if (COACHING.test(q)) return "답하는 방법을 시킴";
   const src = sources.replace(/\s/g, "");
   for (const m of q.matchAll(JOSA_NOUN)) {
@@ -132,6 +137,12 @@ export function styleProblem(q: string, sources: string): string {
   return "";
 }
 
+/** 질문에서 물음 말끝을 떼면 자소서 문장 그대로인지 (무엇을 묻는지 없음) */
+export function echoesSource(q: string, source: string) {
+  const body = q.replace(/["'“”‘’]/g, "").replace(/(나요|습니까|ㅂ니까|까요|가요|세요|요)?[?.]$/, "").replace(/\s/g, "");
+  return body.length >= 10 && source.replace(/\s/g, "").includes(body.replace(/(습니다|했다|었다|았다|였다|한다|이다|다)$/, ""));
+}
+
 /** AI 질문 하나 검사. 통과하면 "" 아니면 이유 */
 export function questionProblem(q: string, resume: string): string {
   if (q.length < 8 || q.length > 120) return "길이";
@@ -139,6 +150,7 @@ export function questionProblem(q: string, resume: string): string {
   if (style) return style;
   if (/…|\.\.\./.test(q)) return "말을 중간에 자름";
   if (/어떻게 생각하시/.test(q)) return "막연한 물음";
+  if (echoesSource(q, resume)) return "자소서 문장을 그대로 물음";
   const made = (q.match(/\d+/g) ?? []).filter((n) => !resume.includes(n));
   if (made.length) return "없던 숫자";
   return "";

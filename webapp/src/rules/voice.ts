@@ -2,7 +2,7 @@
 import {
   BLOCK_SEC, MIN_ON_SEC, NOISE_HOLD_SEC, NOISE_MAX_DB, NOISE_PERCENTILE, NOISE_RISE_DB, NOISE_SETUP_SEC, NOISE_WINDOW_SEC,
   OFF_HOLD_SEC, OFF_RATIO, ON_RATIO, QUIET_HOLD, QUIET_MIN_SPEECH, QUIET_OFF_DB, QUIET_ON_DB, QUIET_WINDOW,
-  MOUTH_MOVE_MIN, SILENCE_RESET_SEC, SPEECH_FLOOR_BELOW_VOICE_DB, STUCK_SEC, VAD_OFF_HOLD_SEC, VAD_OFF_P, VAD_ON_P, VAD_STALE_SEC, VOICE_END_SILENCE_SEC,
+  MOUTH_MOVE_MIN, OTHER_VOICE_HOLD_SEC, SILENCE_RESET_SEC, SPEECH_FLOOR_BELOW_VOICE_DB, STUCK_SEC, VAD_OFF_HOLD_SEC, VAD_OFF_P, VAD_ON_P, VAD_STALE_SEC, VOICE_END_SILENCE_SEC,
   VOICE_MAX_DB, VOICE_MIN_DB, VOICE_SETUP_SEC,
 } from "./constants";
 import { EventTracker } from "./events";
@@ -164,6 +164,7 @@ export class VoiceRules {
   private lowSince: number | null = null;
   private noisySince: number | null = null;
   private vadOnSince: number | null = null;
+  private stillSince: number | null = null; // 말소리가 들리는데 입이 안 움직이기 시작한 때
   /** 이번 답변에서 Silero로 판정한 블록 비율 (나머지는 음량 판정) */
   sileroBlocks = 0;
   blocks = 0;
@@ -185,7 +186,9 @@ export class VoiceRules {
     const energy = this.vad.feed(t, rms); // 모델이 끊겼다 돌아와도 바로 이어 쓸 수 있게 항상 돌린다
     this.blocks++;
     const voiced = vad ?? energy;
-    const other = voiced && mouth !== null && mouth < MOUTH_MOVE_MIN;
+    const still = voiced && mouth !== null && mouth < MOUTH_MOVE_MIN;
+    this.stillSince = still ? (this.stillSince ?? t) : null;
+    const other = still && t - this.stillSince! >= OTHER_VOICE_HOLD_SEC;
     if (vad !== null) this.sileroBlocks++;
     if (other) {
       // 침묵을 끊지 않고, 바닥 소음 계산에는 넣는다

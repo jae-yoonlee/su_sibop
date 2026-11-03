@@ -7,7 +7,7 @@ import { styleProblem, type Question } from "./questions";
 export const FOLLOWUP_TARGET_SEC = 5; // 답변이 끝나고 이 안에 꼬리질문을 띄우는 것이 목표
 export const FOLLOWUP_MAX_SEC = 12; // AI가 이때까지도 못 쓰면 틀 문장 (화면·결과에 표시)
 const MAX_LEN = 80; // 답변 인용이 들어가므로 본질문(70자)보다 조금 길게
-const QUOTE_LEN = 28; // 인용은 이 글자 수까지
+const QUOTE_LEN = 32; // 인용은 이 글자 수까지 (앞에서 자르고 끝은 문장 끝 그대로)
 const ANSWER_CHARS = 500; // AI에 넣는 답변 길이 상한 (짧을수록 빠름)
 
 const UNITS = "(%|퍼센트|프로|개월|년|월|주|일|명|배|건|개|원|시간|분)";
@@ -36,29 +36,30 @@ export const ISSUE_LABELS: Record<IssueName, string> = {
 const INTENT: Record<IssueName, (s: Record<string, string>) => string> = {
   mismatch: (s) => `자기소개서에는 ${s.doc}, 답변에서는 ${s.said}라고 했다. 어느 쪽이 맞는지 확인하라.`,
   missing_fact: (s) => `답변의 '${s.quote}' 부분과 자기소개서에 적은 ${s.doc}가 어떻게 연결되는지 물어라.`,
-  no_result: (s) => `답변의 '${s.quote}' 부분에 결과가 없다. 그래서 어떻게 되었는지 묻는다.`,
-  no_role: (s) => `답변의 '${s.quote}' 부분에서 본인이 직접 한 일이 안 보인다. 본인 역할을 묻는다.`,
-  team_heavy: (s) => `답변의 '${s.quote}'처럼 '우리·팀' 이야기뿐이라 본인 기여가 불분명하다. 본인 기여 비중을 묻는다.`,
-  vague: (s) => `답변의 '${s.quote}'라는 모호한 표현에서 실제로 무엇을 했는지 묻는다.`,
-  generic: (s) => `답변의 '${s.quote}' 부분을 더 깊게 묻는다 (어려웠던 점, 판단 이유, 구체적 행동 중 하나).`,
-  no_text: () => "답변을 받아쓰지 못했다. 방금 답변의 핵심을 다시 묻는다.",
+  no_result: (s) => `답변의 '${s.quote}' 부분에 결과가 없다. 그 뒤 어떻게 되었는지 자세히 말해 달라고 요청한다.`,
+  no_role: (s) => `답변의 '${s.quote}' 부분에서 본인이 한 일이 안 보인다. 본인이 맡은 일을 자세히 말해 달라고 요청한다.`,
+  team_heavy: (s) => `답변의 '${s.quote}'처럼 '우리·팀' 이야기뿐이라 본인 기여가 불분명하다. 본인이 한 일을 따로 자세히 말해 달라고 요청한다.`,
+  vague: (s) => `답변의 '${s.quote}'라는 모호한 표현에서 실제로 무엇을 했는지 자세히 말해 달라고 요청한다.`,
+  generic: (s) => `답변의 '${s.quote}' 부분을 더 자세히 말해 달라고 요청한다 (어려웠던 점, 판단 이유, 구체적 행동 중 하나).`,
+  no_text: () => "답변을 받아쓰지 못했다. 방금 답변의 핵심을 다시 자세히 말해 달라고 요청한다.",
 };
 
+// 2026-11-03 사용자 요청: "~직접 말했나요?" 같은 예/아니오 질문 대신 '그 부분을 더 자세히 말씀해 달라'는 요청으로 묻는다.
 const TEMPLATES: Record<IssueName, string[]> = {
   mismatch: [
     "자기소개서에는 {doc_라고} 쓰셨는데 방금 {said_라고} 하셨습니다. 어느 쪽이 맞나요?",
-    "방금 {said_라고} 하셨는데 자기소개서에는 {doc_로} 되어 있습니다. 설명해 주시겠어요?",
+    "방금 {said_라고} 하셨는데 자기소개서에는 {doc_로} 되어 있습니다. 어느 쪽이 맞는지 말씀해 주세요.",
   ],
   missing_fact: [
     "'{quote}'라고 하셨는데, 자기소개서에 적은 {doc_와}는 어떻게 이어지나요?",
-    "'{quote}' 부분에서, 자기소개서의 {doc_는} 어떻게 나온 숫자인가요?",
+    "'{quote}'라고 하셨는데, 자기소개서에 적은 {doc_는} 어떻게 나온 결과인지 자세히 말씀해 주세요.",
   ],
-  no_result: ["'{quote}'라고 하셨는데, 그래서 결과는 어땠나요?", "'{quote}' 이후에 무엇이 달라졌나요?"],
-  no_role: ["'{quote}'라고 하셨는데, 그중 본인이 직접 한 일은 무엇이었나요?", "'{quote}' 부분에서 본인이 맡은 역할을 말씀해 주시겠어요?"],
-  team_heavy: ["'{quote}'라고 하셨는데, 그중 본인 기여는 어느 정도였나요?", "'{quote}' 부분에서 팀원들과 달리 본인만 맡은 일은 무엇인가요?"],
-  vague: ["'{quote}'라고 하셨는데, 구체적으로 어떤 행동을 하셨나요?", "'{quote}'라고 하셨는데, 그때 실제로 어떤 일을 하셨나요?"],
-  generic: ["'{quote}'라고 하셨는데, 그때 가장 어려웠던 점은 무엇이었나요?", "'{quote}' 부분을 조금 더 구체적으로 말씀해 주시겠어요?"],
-  no_text: ["방금 답변이 잘 들리지 않았어요. 다시 한번 말씀해 주시겠어요?"],
+  no_result: ["'{quote}'라고 하셨는데, 그 뒤 결과가 어떻게 되었는지 자세히 말씀해 주세요.", "'{quote}'라고 하셨는데, 그 일로 무엇이 달라졌는지 자세히 말씀해 주세요."],
+  no_role: ["'{quote}'라고 하셨는데, 그중 본인이 맡은 일을 더 자세히 말씀해 주세요.", "'{quote}'라고 하셨는데, 그때 본인이 한 일을 하나씩 자세히 말씀해 주세요."],
+  team_heavy: ["'{quote}'라고 하셨는데, 팀 안에서 본인이 한 일을 따로 자세히 말씀해 주세요.", "'{quote}'라고 하셨는데, 팀원들과 달리 본인만 맡은 일을 자세히 말씀해 주세요."],
+  vague: ["'{quote}'라고 하셨는데, 실제로 어떤 행동을 하셨는지 자세히 말씀해 주세요.", "'{quote}'라고 하셨는데, 그때 실제로 한 일을 더 자세히 말씀해 주세요."],
+  generic: ["'{quote}'라고 하셨는데, 그 부분을 조금 더 자세히 말씀해 주세요.", "'{quote}'라고 하셨는데, 그때 어떻게 하셨는지 더 자세히 말씀해 주세요."],
+  no_text: ["방금 답변을 잘 듣지 못했어요. 가장 하고 싶은 이야기를 다시 자세히 말씀해 주세요."],
 };
 
 const norm = (s: string) => (s ?? "").replace(/\s+/g, " ").trim();
@@ -83,16 +84,30 @@ export function facts(text: string): Map<string, Set<string>> {
 
 const splitSentences = (t: string) => norm(t).split(/(?<=[.?!다요죠])\s+/).filter(Boolean);
 
-/** 답변 문장을 인용 길이로 자른다 (어절 단위) */
+// 말 이음 자리 (받아쓰기는 쉼표가 거의 없어서 이음 말끝으로 마디를 나눈다)
+const CLAUSE_END = /(?<=[,]|(?:고|며|면서|는데|은데|지만|어서|아서|해서|니까|으니|라서|도록|거나))\s+/;
+
+/** 답변 문장을 인용 길이로 줄인다. 앞을 '…'로 자르지 않고 문장 끝(~습니다)이 그대로 남도록 뒤쪽 마디를 고른다 (2026-11-03 요청 "해당... 하면 이해가 안 됨").
+ *  마지막 마디도 길면 뒤에서부터 어절을 모은다. 끝은 항상 원래 문장 끝이다. */
 export function shortQuote(sentence: string) {
-  const t = norm(sentence).replace(/[.?!]+$/, "");
+  const t = norm(sentence).replace(/[.?!…]+$/, "").replace(/^(저는|제가)\s+/, "");
   if (t.length <= QUOTE_LEN) return t;
+  const clauses = t.split(CLAUSE_END).map((c) => c.replace(/,$/, "").trim()).filter(Boolean);
   let out = "";
-  for (const w of t.split(" ")) {
-    if ((out + " " + w).trim().length > QUOTE_LEN) break;
-    out = (out + " " + w).trim();
+  for (let i = clauses.length - 1; i >= 0; i--) {
+    const next = out ? `${clauses[i]} ${out}` : clauses[i];
+    if (next.length > QUOTE_LEN) break;
+    out = next;
   }
-  return (out || t.slice(0, QUOTE_LEN)) + "…";
+  if (out.length >= 8) return out;
+  out = "";
+  const words = t.split(" ");
+  for (let i = words.length - 1; i >= 0; i--) {
+    const next = out ? `${words[i]} ${out}` : words[i];
+    if (next.length > QUOTE_LEN && out) break;
+    out = next;
+  }
+  return out;
 }
 
 const RESULT_VERB = /(줄였|늘렸|높였|낮췄|개선|달성|성공|완성|만들었|해결)/;
@@ -187,7 +202,7 @@ export function followupPrompt(main: Question, answer: string, issue: Issue, pre
 
 지시: ${INTENT[issue.name](issue.slots)}
 ${previous.length ? `이미 한 질문과 비슷하게 묻지 마라: ${previous.slice(-3).join(" / ")}\n` : ""}
-규칙: 지원자가 방금 한 말을 짧게 인용하거나 짚어서 묻는다. 존댓말 한 문장, 70자 이내. 답변과 자기소개서에 없는 숫자·사실을 지어내지 않는다.\n'숫자로', '한 문장으로', '구체적인 수치로'처럼 답하는 방법을 시키지 말고, 실제 면접관처럼 무엇을 했고 어떻게 되었는지를 묻는다.
+규칙: "'(방금 한 말)'라고 하셨는데, (무엇)을 더 자세히 말씀해 주세요." 형태로, 방금 한 말을 짚고 그 부분을 자세히 말해 달라고 요청한다. 인용은 문장 끝까지 온전하게 쓰고 '…', '...'로 자르지 않는다. "~말했나요?", "~말씀하셨나요?"처럼 말했는지만 묻지 않는다. 상대를 '지원자'라고 부르지 않는다. 존댓말 한 문장, 70자 이내. 답변과 자기소개서에 없는 숫자·사실을 지어내지 않는다.\n'숫자로', '한 문장으로', '구체적인 수치로'처럼 답하는 방법을 시키지 말고, 실제 면접관처럼 무엇을 했고 어떻게 되었는지를 묻는다.
 출력: {"question": "..."}`;
 }
 
@@ -213,6 +228,7 @@ export function checkAiFollowup(raw: string, issue: Issue, main: Question, answe
     throw new Error("형식이 다름");
   }
   if (!q || q.length > MAX_LEN) throw new Error("빈 질문이거나 너무 김");
+  if (/…|\.\.\./.test(q)) throw new Error("말을 중간에 자름");
   const style = styleProblem(q, `${main.question} ${main.evidence ?? ""} ${answer} ${issue.slots.quote ?? ""} ${issue.slots.doc ?? ""}`);
   if (style) throw new Error(style);
   const allowed = new Set(`${main.evidence ?? ""} ${answer}`.match(/\d+/g) ?? []);

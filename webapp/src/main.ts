@@ -323,7 +323,7 @@ function resultHtml() {
       <div class="stat"><div class="v" style="font-size:32px;line-height:1.2">${top}</div><div class="k">가장 많았던 문제</div></div>
     </div>
     ${feedbackHtml()}
-    ${coverageHtml()}
+    ${SHOW_COVERAGE ? coverageHtml() : ""}
     <div class="card-dark">
       <h2 style="margin-top:0">문제 모아 보기</h2>
       <table><tr><th>문제</th><th>상태</th><th>횟수</th><th>지속 시간</th><th>화면 알림</th></tr>
@@ -551,6 +551,8 @@ function bindReplay() {
   });
 }
 
+// 2026-11-03 사용자 요청: '회사가 원하는 역량과 내 자소서' 칸은 결과 화면에 안 띄운다 (규칙 판정이 새 자소서에서 절반만 맞음). 결과 파일에는 남김
+const SHOW_COVERAGE = false;
 function coverageHtml() {
   const p = S.prep;
   if (!p?.coverage.length) return "";

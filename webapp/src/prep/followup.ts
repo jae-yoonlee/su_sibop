@@ -34,8 +34,8 @@ export const ISSUE_LABELS: Record<IssueName, string> = {
 
 // AI에 줄 '무엇을 물을지' 지시 (이유마다 한 줄)
 const INTENT: Record<IssueName, (s: Record<string, string>) => string> = {
-  mismatch: (s) => `자기소개서에는 ${s.doc}, 답변에서는 ${s.said}라고 했다. 어느 쪽이 맞는지 확인하라.`,
-  missing_fact: (s) => `답변의 '${s.quote}' 부분과 자기소개서에 적은 ${s.doc}가 어떻게 연결되는지 물어라.`,
+  mismatch: (s) => `자기소개서에는 '${s.ctx}'(${s.doc})라고 썼는데 답변에서는 ${s.said}라고 했다. 어떤 활동의 숫자인지 함께 말하며 어느 쪽이 맞는지 확인하라.`,
+  missing_fact: (s) => `자기소개서에 '${s.ctx}'라고 썼다. 이 활동을 함께 말하면서 그 ${s.doc} 동안 정확히 어떤 일을 했는지, 또는 그 경험으로 무엇을 느꼈는지 물어라. '${s.doc}가 뭡니까?'처럼 숫자만 떼어 묻지 마라.`,
   no_result: (s) => `답변의 '${s.quote}' 부분에 결과가 없다. 그 뒤 어떻게 되었는지 자세히 말해 달라고 요청한다.`,
   no_role: (s) => `답변의 '${s.quote}' 부분에서 본인이 한 일이 안 보인다. 본인이 맡은 일을 자세히 말해 달라고 요청한다.`,
   team_heavy: (s) => `답변의 '${s.quote}'처럼 '우리·팀' 이야기뿐이라 본인 기여가 불분명하다. 본인이 한 일을 따로 자세히 말해 달라고 요청한다.`,
@@ -46,13 +46,14 @@ const INTENT: Record<IssueName, (s: Record<string, string>) => string> = {
 
 // 2026-11-03 사용자 요청: "~직접 말했나요?" 같은 예/아니오 질문 대신 '그 부분을 더 자세히 말씀해 달라'는 요청으로 묻는다.
 const TEMPLATES: Record<IssueName, string[]> = {
+  // 2026-11-03 사용자 요청: "6주가 뭡니까?"처럼 숫자만 떼어 물으면 무슨 말인지 모른다 → 숫자가 나온 자소서 문장(활동)을 함께 말한다
   mismatch: [
-    "자기소개서에는 {doc_라고} 쓰셨는데 방금 {said_라고} 하셨습니다. 어느 쪽이 맞나요?",
-    "방금 {said_라고} 하셨는데 자기소개서에는 {doc_로} 되어 있습니다. 어느 쪽이 맞는지 말씀해 주세요.",
+    "자기소개서에는 '{ctx}'라고 쓰셨는데 방금 {said_라고} 하셨습니다. 어느 쪽이 맞나요?",
+    "방금 {said_라고} 하셨는데 자기소개서에는 '{ctx}'라고 되어 있습니다. 어느 쪽이 맞는지 말씀해 주세요.",
   ],
   missing_fact: [
-    "'{quote}'라고 하셨는데, 자기소개서에 적은 {doc_와}는 어떻게 이어지나요?",
-    "'{quote}'라고 하셨는데, 자기소개서에 적은 {doc_는} 어떻게 나온 결과인지 자세히 말씀해 주세요.",
+    "자기소개서에 '{ctx}'라고 쓰셨는데, {ask}",
+    "자기소개서에 '{ctx}'라고 쓰셨는데, 그 경험을 통해 무엇을 느끼고 배우셨는지 말씀해 주세요.",
   ],
   no_result: ["'{quote}'라고 하셨는데, 그 뒤 결과가 어떻게 되었는지 자세히 말씀해 주세요.", "'{quote}'라고 하셨는데, 그 일로 무엇이 달라졌는지 자세히 말씀해 주세요."],
   no_role: ["'{quote}'라고 하셨는데, 그중 본인이 맡은 일을 더 자세히 말씀해 주세요.", "'{quote}'라고 하셨는데, 그때 본인이 한 일을 하나씩 자세히 말씀해 주세요."],
@@ -110,6 +111,23 @@ export function shortQuote(sentence: string) {
   return out;
 }
 
+const PERIOD_UNITS = new Set(["개월", "년", "주", "일", "시간", "분"]);
+
+/** 자소서에서 숫자가 나온 문장을 인용용으로: 숫자가 든 마디부터 문장 끝까지 (길면 숫자 마디 + 마지막 마디). 끝은 원래 문장 끝 */
+export function factContext(evidence: string, num: string, unit: string) {
+  const re = new RegExp(`${num.replace(".", "\\.")}\\s*(${unit}|${Object.keys(UNIT_ALIAS).filter((k) => UNIT_ALIAS[k] === unit).join("|") || unit})`);
+  const sent = splitSentences(evidence).find((x) => re.test(x.replace(/,/g, ""))) ?? norm(evidence);
+  const t = sent.replace(/[.?!…]+$/, "").replace(/^(저는|제가)\s+/, "");
+  const cl = t.split(CLAUSE_END).map((c) => c.replace(/,$/, "").trim()).filter(Boolean);
+  const i = Math.max(0, cl.findIndex((c) => re.test(c.replace(/,/g, ""))));
+  const tail = cl.slice(i).join(" ");
+  if (tail.length <= 50) return tail;
+  if (i < cl.length - 1 && cl[i].length + cl[cl.length - 1].length < 60) return `${cl[i]} ${cl[cl.length - 1]}`;
+  return cl[i].replace(/(하고|하며|하면서)$/, "했다").replace(/(고|며|면서)$/, "다");
+}
+const askFor = (num: string, unit: string) =>
+  PERIOD_UNITS.has(unit) ? `그 ${num}${unit} 동안 정확히 어떤 일을 하셨는지 자세히 말씀해 주세요.` : `그 ${num}${unit} 결과가 어떻게 나왔는지 자세히 말씀해 주세요.`;
+
 const RESULT_VERB = /(줄였|늘렸|높였|낮췄|개선|달성|성공|완성|만들었|해결)/;
 const longest = (ss: string[]) => ss.reduce((a, b) => (b.length > a.length ? b : a), "");
 
@@ -124,7 +142,8 @@ export function findIssues(main: Pick<Question, "type" | "evidence">, answer: st
   const first = (s: Set<string>) => [...s].sort()[0];
   for (const [unit, nums] of doc) {
     const got = said.get(unit);
-    if (got && ![...nums].some((n) => got.has(n))) issues.push({ name: "mismatch", slots: { doc: first(nums) + unit, said: first(got) + unit } });
+    if (got && ![...nums].some((n) => got.has(n)))
+      issues.push({ name: "mismatch", slots: { doc: first(nums) + unit, said: first(got) + unit, ctx: factContext(main.evidence, first(nums), unit) } });
   }
   if (main.type === "경험" && !RESULT_WORDS.test(a)) issues.push({ name: "no_result", slots: { quote: q((s) => RESULT_VERB.test(s)) } });
   const nSelf = (a.match(SELF) ?? []).length, nTeam = (a.match(TEAM) ?? []).length;
@@ -138,7 +157,9 @@ export function findIssues(main: Pick<Question, "type" | "evidence">, answer: st
     }
   }
   // 자소서 숫자를 답변에서 안 말한 것은 '답변 내용'이 아니라서 맨 뒤 (다른 빈 곳이 없을 때만)
-  for (const [unit, nums] of doc) if (!said.has(unit)) issues.push({ name: "missing_fact", slots: { doc: first(nums) + unit, quote: q(() => false) } });
+  for (const [unit, nums] of doc)
+    if (!said.has(unit))
+      issues.push({ name: "missing_fact", slots: { doc: first(nums) + unit, ctx: factContext(main.evidence, first(nums), unit), ask: askFor(first(nums), unit) } });
   return issues;
 }
 
@@ -202,7 +223,7 @@ export function followupPrompt(main: Question, answer: string, issue: Issue, pre
 
 지시: ${INTENT[issue.name](issue.slots)}
 ${previous.length ? `이미 한 질문과 비슷하게 묻지 마라: ${previous.slice(-3).join(" / ")}\n` : ""}
-규칙: "'(방금 한 말)'라고 하셨는데, (무엇)을 더 자세히 말씀해 주세요." 형태로, 방금 한 말을 짚고 그 부분을 자세히 말해 달라고 요청한다. 인용은 문장 끝까지 온전하게 쓰고 '…', '...'로 자르지 않는다. "~말했나요?", "~말씀하셨나요?"처럼 말했는지만 묻지 않는다. 상대를 '지원자'라고 부르지 않는다. 존댓말 한 문장, 70자 이내. 답변과 자기소개서에 없는 숫자·사실을 지어내지 않는다.\n'숫자로', '한 문장으로', '구체적인 수치로'처럼 답하는 방법을 시키지 말고, 실제 면접관처럼 무엇을 했고 어떻게 되었는지를 묻는다.
+규칙: 숫자나 낱말 하나만 떼어 묻지 말고 그것이 나온 활동을 함께 말한다 (예: "'~ 활동에서 6주를 하셨다고 했는데, 그동안 정확히 어떤 일을 하셨나요?"). "'(방금 한 말)'라고 하셨는데, (무엇)을 더 자세히 말씀해 주세요." 형태로, 방금 한 말을 짚고 그 부분을 자세히 말해 달라고 요청한다. 인용은 문장 끝까지 온전하게 쓰고 '…', '...'로 자르지 않는다. "~말했나요?", "~말씀하셨나요?"처럼 말했는지만 묻지 않는다. 상대를 '지원자'라고 부르지 않는다. 존댓말 한 문장, 70자 이내. 답변과 자기소개서에 없는 숫자·사실을 지어내지 않는다.\n'숫자로', '한 문장으로', '구체적인 수치로'처럼 답하는 방법을 시키지 말고, 실제 면접관처럼 무엇을 했고 어떻게 되었는지를 묻는다.
 출력: {"question": "..."}`;
 }
 
@@ -213,7 +234,7 @@ export const FOLLOWUP_SCHEMA = JSON.stringify({
 });
 
 /** AI 답 검사. 통과하면 질문, 아니면 오류 */
-const STOP = new Set(["그리", "그래", "그때", "그것", "제가", "저는", "저희", "우리", "있었", "했습", "했고", "하는", "하고", "있습", "합니", "그런", "이런", "정말"]);
+const STOP = new Set(["그리", "그래", "그때", "그것", "제가", "저는", "저희", "우리", "있었", "했습", "했고", "하는", "하고", "있습", "합니", "그런", "이런", "정말", "동안", "기간", "결과", "경험", "자기"]);
 export function sharesWord(q: string, quote: string) {
   const words = quote.replace(/…/g, "").split(/[\s,.!?'"()]+/).filter((w) => w.length >= 2).map((w) => w.slice(0, 2)).filter((w) => !STOP.has(w));
   return words.some((w) => q.includes(w));
@@ -238,9 +259,12 @@ export function checkAiFollowup(raw: string, issue: Issue, main: Question, answe
   if (issue.name === "mismatch" || issue.name === "missing_fact") {
     const num = issue.slots.doc.match(/\d+/)?.[0];
     if (num && !q.includes(num)) throw new Error("확인해야 할 숫자를 빠뜨림");
+    // 숫자만 떼어 묻지 않게: 숫자가 나온 자소서 활동의 낱말이 질문에 있어야 함
+    if (issue.slots.ctx && !sharesWord(q, issue.slots.ctx.replace(/\d+(?:[.,]\d+)?\s*\S*/g, " "))) throw new Error("숫자가 나온 활동을 말하지 않음");
   }
   // 답변을 짚었는지: 인용 문장의 낱말(앞 2글자)이 질문에 하나라도 있어야 함
   if (issue.slots.quote && issue.name !== "missing_fact" && !sharesWord(q, issue.slots.quote)) throw new Error("답변 내용을 짚지 않음");
+  if (q.length < 20) throw new Error("앞뒤 문맥 없이 짧게 물음");
   return q;
 }
 

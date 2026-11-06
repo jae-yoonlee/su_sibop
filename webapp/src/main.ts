@@ -166,7 +166,6 @@ function introHtml() {
           <span class="field-sub">자격요건, 우대사항, 인재상을 그대로 붙여 넣어 주세요</span>
           <textarea id="posting" rows="12" placeholder="예) 다양한 부서와 원활하게 협업하며 데이터를 바탕으로 문제를 해결할 분을 찾습니다.">${esc(i.posting)}</textarea></label>
         <label class="field"><span class="field-h">내 자기소개서</span>
-          <span class="field-sub">이 컴퓨터 밖으로 나가지 않아요</span>
           <textarea id="resume" rows="12" placeholder="자기소개서 전체를 붙여 넣어 주세요">${esc(i.resume)}</textarea></label>
       </div>
       <details class="keybox"><summary>Gemini 키 (선택)</summary>

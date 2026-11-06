@@ -22,11 +22,14 @@ import { FEEDBACK_SCHEMA, makeFeedback, type Feedback } from "./report/feedback"
 import { preloadEmbedder } from "./report/embed";
 import { currentModel, followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
 import { ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
-import { runPrep, type PrepState, type StepState } from "./prep/pipeline";
+import { runPrep, type PrepInput, type PrepState, type StepState } from "./prep/pipeline";
+import { demo, demoHtml, demoPick, demoQuestion, EXPECTED_FOLLOWUP } from "./demo"; // 시연 모드 (임시)
 
 // 2라운드 × (본질문 → 꼬리질문) = 4문항. AI가 만든 본질문 3개 중 앞의 2개를 쓰고 1개는 예비.
 const ROUNDS = 2;
 const TOTAL = ROUNDS * 2;
+const rounds = () => (demo.set ? 1 : ROUNDS); // 시연 모드는 본질문 1 + 꼬리 1
+const total = () => rounds() * 2;
 const FOLLOW_READ_SEC = 10; // 꼬리질문은 짧으니 읽는 시간도 짧게
 const MIN_CHARS = 30;
 const KEY_STORE = "sibop.geminiKey";
@@ -72,7 +75,7 @@ const S = {
   coach: null as AnswerCoach | null,
   results: [] as AnswerStats[],
   debug: false,
-  input: { posting: "", resume: "", geminiKey: store.get(KEY_STORE) },
+  input: { posting: "", resume: "", geminiKey: store.get(KEY_STORE) } as PrepInput,
   prep: null as PrepState | null,
   sttMode: "none" as SttMode,
   stt: null as Transcriber | null,
@@ -163,7 +166,6 @@ function introHtml() {
           <span class="field-sub">자격요건, 우대사항, 인재상을 그대로 붙여 넣어 주세요</span>
           <textarea id="posting" rows="12" placeholder="예) 다양한 부서와 원활하게 협업하며 데이터를 바탕으로 문제를 해결할 분을 찾습니다.">${esc(i.posting)}</textarea></label>
         <label class="field"><span class="field-h">내 자기소개서</span>
-          <span class="field-sub">이 컴퓨터 밖으로 나가지 않아요</span>
           <textarea id="resume" rows="12" placeholder="자기소개서 전체를 붙여 넣어 주세요">${esc(i.resume)}</textarea></label>
       </div>
       <details class="keybox"><summary>Gemini 키 (선택)</summary>
@@ -173,7 +175,8 @@ function introHtml() {
       </details>
       <div class="cta">
         <button class="btn-green" id="go">시작하기</button>
-        <p class="privacy">자소서와 영상은 이 컴퓨터 밖으로 나가지 않아요. <span id="stt-chip">${sttNote(S.sttMode)}</span></p>
+        ${demo.set ? `<span class="badge demo-on">시연 모드 · 세트 ${demo.set.id}</span>` : ""}
+        <p class="privacy" id="stt-chip">${sttNote(S.sttMode)}</p>
       </div>
       ${S.error ? `<div class="err">${esc(S.error)}</div>` : ""}
       <div class="steps">
@@ -182,12 +185,13 @@ function introHtml() {
         ${step(3, `질문 ${TOTAL}개`, `${QUESTION_SEC}초 생각하고 ${ANSWER_SEC}초 답해요. 답이 끝나면 꼬리질문이 이어져요`)}
         ${step(4, "결과", "잘한 점과 고칠 점을 정리해 드려요")}
       </div>
+      ${demoHtml()}
     </div>
   </div>`;
 }
 
-/** 시작 버튼 옆 안내: 받아쓰기가 Google을 거치는 경우만 알림 (2026-10-12 결정) */
-const sttNote = (m: SttMode) => (m === "cloud" ? "받아쓰기만 Google 서버를 거쳐요." : m === "none" ? "받아쓰기는 Chrome이나 Edge에서 돼요." : "");
+/** 시작 버튼 옆 안내: 받아쓰기가 안 되는 브라우저만 알림 (2026-11-06 사용자 요청으로 개인정보 안내 문구는 뺌) */
+const sttNote = (m: SttMode) => (m === "none" ? "받아쓰기는 Chrome이나 Edge에서 돼요." : "");
 
 const step = (n: number, h: string, p: string) =>
   `<div class="step-card"><div class="n">STEP ${n}</div><h3>${h}</h3><div>${p}</div></div>`;
@@ -247,14 +251,14 @@ function overlayHtml() {
     return `<button class="start" id="start">시작</button><div class="warn-list">${warns}</div>${sttCheckHtml()}${meter}`;
   }
   if (S.phase === "followup")
-    return `<div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length + 1} / ${TOTAL}</span><span class="badge follow">꼬리질문</span><span>준비 중</span></div>
+    return `<div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length + 1} / ${total()}</span><span class="badge follow">꼬리질문</span><span>준비 중</span></div>
       <p class="q">방금 답변을 듣고 이어서 물어볼게요…</p></div>${meter}`;
   // question / answer
   const q = esc(curQ());
   const label = S.phase === "question" ? "생각하는 시간" : "답변 중";
   const follow = cur()?.kind === "follow" ? `<span class="badge follow">꼬리질문</span>` : "";
   return `
-    <div class="qcol"><div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length} / ${TOTAL}</span>${follow}<span>${label}</span></div>
+    <div class="qcol"><div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length} / ${total()}</span>${follow}<span>${label}</span></div>
       <p class="q">${q}</p></div>
       <div class="toasts" aria-live="polite"></div></div>
     <div class="topbar"><div class="timer"><svg width="84" height="84"><circle cx="42" cy="42" r="36" stroke="#e4dfd4" stroke-width="8" fill="none"/>
@@ -329,7 +333,7 @@ function resultHtml() {
       <table><tr><th>문제</th><th>상태</th><th>횟수</th><th>지속 시간</th><th>화면 알림</th></tr>
       ${rows.map((r) => `<tr><td>${r.label}</td><td><span class="grade ${grade(r.count)}">${GRADE_TEXT[grade(r.count)]}</span></td><td>${r.count}회</td><td>${r.seconds.toFixed(1)}초</td><td>${r.shown}회</td></tr>`).join("") || `<tr><td colspan="5">경고가 없었어요</td></tr>`}
       </table>
-      <p class="muted">${TOTAL}문항을 합쳐 ${WARN_COUNT - 1}회까지 좋음, ${WARN_COUNT}~${PROBLEM_COUNT - 1}회 주의, ${PROBLEM_COUNT}회부터 고칠 점이에요. 답변 중에는 가끔만 알려 드렸지만 여기에는 전부 셌어요. 한 번 길게 이어진 문제는 알림이 두 번 뜰 수 있어서 횟수와 알림 수가 다를 수 있어요.</p>
+      <p class="muted">${rounds() * 2}문항을 합쳐 ${WARN_COUNT - 1}회까지 좋음, ${WARN_COUNT}~${PROBLEM_COUNT - 1}회 주의, ${PROBLEM_COUNT}회부터 고칠 점이에요. 답변 중에는 가끔만 알려 드렸지만 여기에는 전부 셌어요. 한 번 길게 이어진 문제는 알림이 두 번 뜰 수 있어서 횟수와 알림 수가 다를 수 있어요.</p>
       ${evidenceHtml()}
       ${factsHtml()}
       ${answerCompHtml()}
@@ -581,7 +585,7 @@ function bindPage() {
     const posting = ($<HTMLTextAreaElement>("#posting")?.value ?? "").trim();
     const resume = ($<HTMLTextAreaElement>("#resume")?.value ?? "").trim();
     const geminiKey = ($<HTMLInputElement>("#gkey")?.value ?? "").trim();
-    S.input = { posting, resume, geminiKey };
+    S.input = { posting, resume, geminiKey, ...(demo.set ? { fixed: [demoQuestion(demo.set)] } : {}) };
     if (posting.length < MIN_CHARS || resume.length < MIN_CHARS) {
       S.error = `채용공고와 자소서를 각각 ${MIN_CHARS}자 이상 넣어 주세요.`;
       return render();
@@ -595,6 +599,16 @@ function bindPage() {
     });
     void start();
   });
+  app.querySelectorAll<HTMLButtonElement>("[data-demo]").forEach((el) =>
+    el.addEventListener("click", () => {
+      const geminiKey = ($<HTMLInputElement>("#gkey")?.value ?? "").trim();
+      const set = demoPick(Number(el.dataset.demo));
+      if (set) S.input = { posting: set.posting, resume: set.resume, geminiKey };
+      S.error = "";
+      render();
+      $(".inputs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }),
+  );
   $("#new-input")?.addEventListener("click", () => {
     resetRun();
     S.prep = null;
@@ -717,7 +731,7 @@ function endAnswer() {
   S.results.push({ ...S.coach.finish(now()), sttRestarts: stt?.restarts ?? 0 });
   S.coach = null;
   if (asked.kind === "main") return void nextFollowup(asked, text, stt?.error ?? "");
-  if (mainCount() < ROUNDS) {
+  if (mainCount() < rounds()) {
     askMain();
     go("question");
   } else go("result");
@@ -733,6 +747,7 @@ async function nextFollowup(main: Asked, text: Promise<string>, sttError: string
     ask: followupAsker(),
     history,
   });
+  if (demo.set && f.reason === "no_text") f.question = EXPECTED_FOLLOWUP; // 시연: 받아쓴 답이 없으면 세트의 예상 꼬리질문
   if (!answer && S.sttMode !== "none") f.error = `답변을 받아쓰지 못했어요${sttError ? ` (${sttError === "network" ? "인터넷 연결 문제" : sttError})` : " (말소리가 안 들렸거나 마이크 문제)"}`;
   saveHistory(S.input.resume, f.question);
   S.asked.push({ text: f.question, kind: "follow", type: main.type, source: f.source, evidence: main.evidence, reason: f.reason, issues: f.issues, error: f.error, ms: performance.now() - t0 });

@@ -17,6 +17,7 @@ export interface PrepInput {
   posting: string;
   resume: string;
   geminiKey: string;
+  fixed?: Question[]; // 시연 모드: 이 질문을 그대로 쓰고 AI 질문 만들기는 건너뜀 (demo.ts)
 }
 
 export type StepState = "wait" | "run" | "done" | "skip" | "fail";
@@ -58,7 +59,7 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
   let required = requiredFromRules(input.posting);
   s.steps.rules = "done";
   s.coverage = checkResume(required, input.resume);
-  s.questions = ruleQuestions(input.resume, s.coverage);
+  s.questions = input.fixed ?? ruleQuestions(input.resume, s.coverage);
   s.timings.rules = sec();
   emit();
 
@@ -102,6 +103,12 @@ export function runPrep(input: PrepInput, onChange: (s: PrepState) => void): Pre
     }
     s.timings.resume = sec();
     s.steps.resume = "done";
+    if (input.fixed) {
+      // 시연 모드: 역량 정리·자소서 대조는 평소처럼 (결과 보고서가 같아야 함), 질문은 세트 문장 그대로
+      void preloadLlm(); // 꼬리질문용
+      s.steps.questions = "done";
+      return finish("rules");
+    }
     if (!s.done) s.questions = ruleQuestions(input.resume, s.coverage);
     emit();
 

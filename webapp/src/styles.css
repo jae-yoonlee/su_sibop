@@ -348,3 +348,19 @@ tr:hover td { background: var(--surface-2); }
 .qcol .toasts { position: static; width: min(560px, 100%); justify-items: stretch; }
 .qcol .toast { text-align: center; border-left: none; border-top: 6px solid var(--magenta); }
 .qcol .toast.status { border-top-color: var(--primary); }
+
+/* 시연 모드 (임시, 발표 끝나면 demo.ts와 함께 지움) */
+.demo { margin-top: 48px; }
+.demo-head h2 { font: 700 24px/1.2 var(--display); margin: 0 0 6px; }
+.demo-head p { margin: 0; color: var(--ink-2); font-size: 15px; }
+.demo-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 18px; }
+.demo-group { background: var(--surface); box-shadow: var(--shadow); border-radius: 24px; padding: 22px; }
+.demo-sub { font-size: 13px; font-weight: 600; color: var(--primary); }
+.demo-group h3 { font: 700 19px/1.2 var(--display); margin: 6px 0 14px; }
+.demo-sets { display: grid; gap: 8px; }
+.demo-set { display: grid; gap: 2px; text-align: left; font: inherit; color: var(--ink); background: var(--surface-2); border: 2px solid transparent; border-radius: 14px; padding: 12px 14px; cursor: pointer; }
+.demo-set:hover { border-color: var(--line); }
+.demo-set.on { background: var(--primary-soft); border-color: var(--primary); }
+.demo-set b { font-size: 15px; font-weight: 600; line-height: 1.4; }
+.demo-no { font-size: 12px; color: var(--ink-2); }
+.badge.demo-on { background: var(--primary); color: #fff; }

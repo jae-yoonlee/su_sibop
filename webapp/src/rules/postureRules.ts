@@ -1,6 +1,6 @@
 // 자세 규칙: 얼굴 안 보임·고개 돌림·숙임(step3_coaching.CoachRules), 자리 이동(coach_engine), 중앙 이탈·눈동자·딴 곳 보기(웹에서 추가).
 import {
-  CENTER_X_TOL, CENTER_Y_RANGE, FACE_GAP_SEC, GAZE_BASE_RATIO, GAZE_BLINK_SKIP, GAZE_MIN_STD, GAZE_WINDOW_SEC,
+  CENTER_X_TOL, CENTER_Y_RANGE, FACE_GAP_SEC, GAZE_BASE_RATIO, GAZE_BLINK_SKIP, GAZE_MIN_STD, GAZE_WINDOW_SEC, GAZE_X_SCREEN_LEFT, JUDGE_EYE_SHIFT,
   HOLD_SEC, LOOK_EYE_TOL, LOOK_HEAD_DEG, LOOK_HOLD_SEC, MIN_SHOW_SEC, PITCH_LIMIT, SHIFT_HOLD_SEC, SHIFT_SIZE_RATIO, SHIFT_TOL, SHIFT_Y_TOL, YAW_LIMIT,
 } from "./constants";
 import { EventTracker } from "./events";
@@ -21,7 +21,8 @@ export interface LookTarget {
 export interface PostureBase {
   box: FaceBox; // 세팅 때 얼굴 위치
   gazeStd: number; // 세팅 때 눈동자 흔들림
-  targets?: LookTarget[]; // 렌즈, 질문 카드 (없으면 딴 곳 보기 판정 안 함)
+  targets?: LookTarget[]; // 렌즈, 면접관 자리 (없으면 딴 곳 보기 판정 안 함)
+  side?: -1 | 0 | 1; // 이번 질문을 한 면접관이 앉은 쪽 (화면 왼쪽 −1, 오른쪽 1). 그쪽으로 눈동자 범위를 더 넓힘
 }
 
 /** 점 p에서 선분 a–b까지 거리 (렌즈와 질문 카드 사이를 오가며 보는 것도 정상) */
@@ -32,12 +33,16 @@ export function segDist(p: [number, number], a: [number, number], b: [number, nu
   return Math.hypot(p[0] - a[0] - k * dx, p[1] - a[1] - k * dy);
 }
 
-/** 얼굴이나 눈동자가 렌즈~질문 카드 범위를 벗어났는지. 눈 감은 프레임은 판단 보류(null). */
-export function lookingAway(angles: { yaw: number; pitch: number }, info: FaceInfo, targets: LookTarget[]): boolean | null {
+/** 얼굴이나 눈동자가 렌즈~면접관 자리 범위를 벗어났는지. 눈 감은 프레임은 판단 보류(null).
+ *  side가 있으면 면접관 자리에서 그 면접관 쪽으로 JUDGE_EYE_SHIFT만큼 뻗은 구간도 정상으로 본다 (한쪽으로만 넓힘). */
+export function lookingAway(angles: { yaw: number; pitch: number }, info: FaceInfo, targets: LookTarget[], side = 0): boolean | null {
   const [a, b] = targets;
   if (segDist([angles.yaw, angles.pitch], [a.yaw, a.pitch], [b.yaw, b.pitch]) > LOOK_HEAD_DEG) return true;
   if (info.blink >= GAZE_BLINK_SKIP) return null;
-  return segDist([info.gazeX, info.gazeY], [a.gx, a.gy], [b.gx, b.gy]) > LOOK_EYE_TOL;
+  const p: [number, number] = [info.gazeX, info.gazeY];
+  let d = segDist(p, [a.gx, a.gy], [b.gx, b.gy]);
+  if (side) d = Math.min(d, segDist(p, [b.gx, b.gy], [b.gx - side * GAZE_X_SCREEN_LEFT * JUDGE_EYE_SHIFT, b.gy]));
+  return d > LOOK_EYE_TOL;
 }
 
 export function offCenter(box: FaceBox) {
@@ -96,7 +101,7 @@ export class PostureRules {
   private looking(angles: { yaw: number; pitch: number }, info: FaceInfo | null): boolean {
     if (!this.base.targets || !info) return false;
     if (Math.abs(angles.yaw) >= YAW_LIMIT || angles.pitch >= PITCH_LIMIT) return (this.lookAway = false);
-    const r = lookingAway(angles, info, this.base.targets);
+    const r = lookingAway(angles, info, this.base.targets, this.base.side ?? 0);
     if (r !== null) this.lookAway = r;
     return this.lookAway;
   }

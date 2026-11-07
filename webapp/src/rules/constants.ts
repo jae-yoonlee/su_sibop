@@ -32,12 +32,19 @@ export const SHIFT_HOLD_SEC = 3.0; // [가설] 자리 이동은 고개 움직임
 
 // ── 딴 곳 보기 [가설] 2026-10-19 사용자 요청: 카메라·질문 말고 다른 곳을 2초 넘게 보면 알림. 기준값은 실측 필요
 export const LOOK_HEAD_DEG = 12.0; // 얼굴 방향이 '렌즈~질문 카드' 사이에서 이 각도 넘게 벗어나면
-export const LOOK_EYE_TOL = 0.25; // 또는 눈동자 방향(-1~1)이 렌즈·질문 볼 때 값 사이에서 이만큼 넘게 벗어나면
+// 2026-11-07 면접관 3명 화면: 면접관 얼굴을 보며 답하니 눈동자가 예전(질문 카드 하나)보다 넓게 움직인다 → 0.25 → 0.3
+export const LOOK_EYE_TOL = 0.3; // 또는 눈동자 방향(-1~1)이 렌즈·면접관 자리 볼 때 값 사이에서 이만큼 넘게 벗어나면
+// [가설] 질문한 면접관이 왼쪽(1)·오른쪽(3)이면 그쪽으로만 눈동자 허용 범위를 이만큼 더 늘림 (고개 기준은 그대로).
+// 화면 폭 30cm 노트북을 50cm 앞에서 보면 양옆 면접관은 가운데에서 약 10° 옆. 홍채 값 ±1을 약 ±30°로 보고 0.3 [실측 필요]
+export const JUDGE_EYE_SHIFT = 0.3;
+// 홍채 x값은 카메라 원본 좌표라, 내가 화면 왼쪽(내 왼쪽)을 보면 커진다 (face.ts irisGaze: 원본 영상에서 내 왼쪽 = 오른쪽 = x 증가)
+export const GAZE_X_SCREEN_LEFT = 1;
 export const LOOK_HOLD_SEC = 2.0;
 
 // ── 눈동자 [가설] step2_face_landmarks.py의 gaze_x/gaze_y 계산식만 재사용, 기준값은 데이터 없음
 export const GAZE_WINDOW_SEC = 4.0; // 최근 이 시간의 눈동자 흔들림을 봄
-export const GAZE_MIN_STD = 0.18; // 흔들림(표준편차)이 이 값 이상이고
+// 2026-11-07 면접관 3명 화면으로 바꾸며 조금 넓힘 0.18 → 0.22 (사용자 요청 "홍채는 약간 범위를 넓히고")
+export const GAZE_MIN_STD = 0.22; // 흔들림(표준편차)이 이 값 이상이고
 export const GAZE_BASE_RATIO = 2.5; // 세팅 때 흔들림의 이 배수 이상이면 '눈동자가 많이 움직임'
 export const GAZE_BLINK_SKIP = 0.5; // 눈 감은 프레임은 빼고 계산
 

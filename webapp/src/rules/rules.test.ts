@@ -181,6 +181,22 @@ describe("자세 규칙", () => {
       expect(look({ yaw: 0, pitch: 0 }, info({ gazeX: 0.5 }), 1.8)).not.toContain("look");
     });
 
+    it("질문한 면접관 쪽으로는 눈동자 범위가 더 넓고, 반대쪽은 그대로", () => {
+      const lookSide = (side: -1 | 0 | 1, gazeX: number) => {
+        const r = new PostureRules({ ...base, targets, side });
+        let out: string[] = [];
+        run(0, 2.2, 0.05, (t) => (out = r.update(t, { yaw: 0, pitch: 0 }, info({ gazeX }), CENTER)));
+        return out;
+      };
+      // 화면 왼쪽(면접관 1)을 보면 홍채 x가 커진다
+      expect(lookSide(-1, 0.5)).not.toContain("look");
+      expect(lookSide(-1, -0.5)).toContain("look");
+      expect(lookSide(1, -0.5)).not.toContain("look");
+      expect(lookSide(1, 0.5)).toContain("look");
+      expect(lookSide(0, 0.5)).toContain("look");
+      expect(lookSide(0, 0.28)).not.toContain("look"); // 전체 범위도 0.25 → 0.3
+    });
+
     it("고개를 15° 옆으로(돌림 경고 20° 전) 2초 넘게 돌리면 look", () => {
       expect(look({ yaw: 15, pitch: 0 }, info())).toContain("look");
     });

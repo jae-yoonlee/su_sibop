@@ -23,6 +23,8 @@ import { preloadEmbedder } from "./report/embed";
 import { currentModel, followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
 import { ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
 import { runPrep, type PrepInput, type PrepState, type StepState } from "./prep/pipeline";
+import { JUDGES, judgesHtml, pickJudge, setJudges, subj } from "./interview/judges";
+import { speak, ttsSupported, voiceFor, type TtsHandle } from "./media/tts";
 import { demo, demoHtml, demoPick, demoQuestion, EXPECTED_FOLLOWUP } from "./demo"; // 시연 모드 (임시)
 
 // 2라운드 × (본질문 → 꼬리질문) = 4문항. AI가 만든 본질문 3개 중 앞의 2개를 쓰고 1개는 예비.
@@ -33,6 +35,7 @@ const total = () => rounds() * 2;
 const FOLLOW_READ_SEC = 10; // 꼬리질문은 짧으니 읽는 시간도 짧게
 const MIN_CHARS = 30;
 const KEY_STORE = "sibop.geminiKey";
+const SUBS_STORE = "sibop.subs";
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k) ?? ""; } catch { return ""; } },
   set: (k: string, v: string) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch { /* 저장 안 돼도 이번 실행엔 지장 없음 */ } },
@@ -51,6 +54,7 @@ interface Asked {
   issues?: IssueName[];
   error?: string; // 꼬리질문을 AI가 못 쓴 이유
   ms?: number; // 답변이 끝나고 꼬리질문이 뜨기까지
+  judge: number; // 이 질문을 읽은 면접관 (0~2)
 }
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -90,14 +94,18 @@ const S = {
   factOff: new Set<string>(), // 사용자가 대조에서 뺀 항목
   answerComp: null as null | "running" | Awaited<ReturnType<typeof answerCompetency>>, // 필요역량이 답변에서도 드러났나
   feedback: null as null | "running" | Feedback, // 이 PC 안 AI 종합 피드백
+  speaking: false, // 면접관이 질문을 읽는 중 (이동안은 생각 시간이 흐르지 않음)
+  subs: store.get(SUBS_STORE) === "1", // 질문 자막 켜기 (기본은 끔: 실제 면접처럼 듣기만)
+  ttsFail: false, // 음성이 안 나오면 자막으로 대신
 };
+let tts: TtsHandle | null = null;
 const cur = () => S.asked[S.asked.length - 1];
 const curQ = () => cur()?.text ?? "";
 const questionsReady = () => !!S.prep?.done;
 const mainCount = () => S.asked.filter((a) => a.kind === "main").length;
 function askMain() {
   const q = S.prep!.questions[mainCount()];
-  S.asked.push({ text: q.question, kind: "main", type: q.type, source: q.source, evidence: q.evidence });
+  S.asked.push({ text: q.question, kind: "main", type: q.type, source: q.source, evidence: q.evidence, judge: pickJudge(cur()?.judge) });
 }
 function resetRun() {
   S.results = [];
@@ -112,6 +120,7 @@ function resetRun() {
   S.answerComp = null;
   S.feedback = null;
   S.factOff.clear();
+  S.ttsFail = false;
 }
 
 type Grade = "ok" | "warn" | "bad";
@@ -131,12 +140,24 @@ function render() {
     return;
   }
   if (!$(".stage")) {
-    app.innerHTML = `<div class="stage"><div class="overlay"></div></div>`;
-    if (S.video) $(".stage")!.prepend(S.video);
+    app.innerHTML = `<div class="stage"><div class="room" aria-hidden="true">${judgesHtml()}</div><div class="overlay"></div></div>`;
+    if (S.video) $(".room")!.after(S.video);
   }
+  // 2026-11-07: 내 얼굴은 자리 맞출 때만 전체 화면, 질문부터는 오른쪽 아래 작은 화면. 전체 화면엔 면접관 3명
+  $(".stage")!.classList.toggle("interview", interviewing());
+  updateJudges();
   $(".overlay")!.innerHTML = overlayHtml();
   bindOverlay();
   tickUi();
+}
+
+const interviewing = () => S.phase === "question" || S.phase === "answer" || S.phase === "followup";
+const showSubs = () => S.subs || S.ttsFail || !ttsSupported();
+
+function updateJudges() {
+  const a = cur();
+  // 꼬리질문을 만드는 동안(AI가 그래픽 칩을 씀)은 면접관 움직임을 멈춘다
+  setJudges($(".room"), { active: interviewing() && S.phase !== "followup" ? a?.judge ?? null : null, talking: S.speaking, still: S.phase === "followup" });
 }
 
 function llmChip(st: LlmState) {
@@ -199,7 +220,7 @@ const step = (n: number, h: string, p: string) =>
 const SETUP_DOTS = [
   ["position", "가운데 앉기"],
   ["lens", "렌즈 보기"],
-  ["screen", "질문 화면 보기"],
+  ["screen", "면접관 자리 보기"],
   ["noise", "조용히"],
   ["voice", "문장 읽기"],
 ] as const;
@@ -234,7 +255,7 @@ function overlayHtml() {
     }).join("");
     return `
       <div class="guide"></div>
-      <div class="qslot placeholder">질문은 여기에 떠요</div>
+      <div class="seat">가운데 면접관 자리</div>
       <div class="setup-card">
         <div class="dots">${dots}</div>
         <div class="msg" id="setup-msg"></div>
@@ -251,20 +272,24 @@ function overlayHtml() {
     return `<button class="start" id="start">시작</button><div class="warn-list">${warns}</div>${sttCheckHtml()}${meter}`;
   }
   if (S.phase === "followup")
-    return `<div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length + 1} / ${total()}</span><span class="badge follow">꼬리질문</span><span>준비 중</span></div>
-      <p class="q">방금 답변을 듣고 이어서 물어볼게요…</p></div>${meter}`;
+    return `<div class="qslot slim"><div class="meta"><span class="badge">질문 ${S.asked.length + 1} / ${total()}</span><span class="badge follow">꼬리질문</span><span>면접관들이 답변을 듣고 다음 질문을 고르고 있어요</span></div></div>${meter}`;
   // question / answer
-  const q = esc(curQ());
-  const label = S.phase === "question" ? "생각하는 시간" : "답변 중";
-  const follow = cur()?.kind === "follow" ? `<span class="badge follow">꼬리질문</span>` : "";
+  const a = cur();
+  const label = S.phase === "answer" ? "답변 중" : S.speaking ? `${subj(a.judge)} 질문하고 있어요` : "생각하는 시간";
+  const follow = a?.kind === "follow" ? `<span class="badge follow">꼬리질문</span>` : "";
+  const remote = voiceFor(a.judge).remote ? `<small class="muted">목소리는 Google 음성으로 읽어요</small>` : "";
+  const sub = showSubs() ? `<p class="q">${esc(curQ())}</p>` : "";
   return `
-    <div class="qcol"><div class="qslot"><div class="meta"><span class="badge">질문 ${S.asked.length} / ${total()}</span>${follow}<span>${label}</span></div>
-      <p class="q">${q}</p></div>
+    <div class="qcol"><div class="qslot ${sub ? "" : "slim"}"><div class="meta"><span class="badge">질문 ${S.asked.length} / ${total()}</span>${follow}<span id="qlabel">${label}</span></div>
+      ${sub}${S.ttsFail && !S.subs ? `<small class="muted">소리가 안 나서 글로 보여 드려요</small>` : remote}</div>
       <div class="toasts" aria-live="polite"></div></div>
     <div class="topbar"><div class="timer"><svg width="84" height="84"><circle cx="42" cy="42" r="36" stroke="#e4dfd4" stroke-width="8" fill="none"/>
       <circle id="ring" cx="42" cy="42" r="36" stroke="${S.phase === "question" ? "#63646e" : "#3457f0"}" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="0"/></svg><span id="sec"></span></div></div>
     ${S.phase === "answer" && S.sttMode !== "none" ? `<div class="stt-live" id="stt-live">받아쓰는 중…</div>` : ""}
-    <div class="bottom-actions"><button class="btn-ghost-sm" id="skip">${S.phase === "question" ? "바로 답변 시작" : "답변 끝내기"}</button></div>
+    <div class="bottom-actions">
+      ${S.phase === "question" && ttsSupported() ? `<button class="btn-ghost-sm" id="relisten" ${S.speaking ? "disabled" : ""}>다시 듣기</button>` : ""}
+      <button class="btn-ghost-sm" id="subs" aria-pressed="${S.subs}">${S.subs ? "자막 끄기" : "자막 켜기"}</button>
+      <button class="btn-ghost-sm" id="skip">${S.phase === "question" ? "바로 답변 시작" : "답변 끝내기"}</button></div>
     ${meter}`;
 }
 
@@ -662,6 +687,12 @@ function bindOverlay() {
     go("setup");
   });
   $("#skip")?.addEventListener("click", () => (S.phase === "question" ? go("answer") : endAnswer()));
+  $("#subs")?.addEventListener("click", () => {
+    S.subs = !S.subs;
+    store.set(SUBS_STORE, S.subs ? "1" : "");
+    render();
+  });
+  $("#relisten")?.addEventListener("click", () => speakCurrent());
 }
 
 document.addEventListener("keydown", (e) => {
@@ -672,10 +703,15 @@ document.addEventListener("keydown", (e) => {
 });
 
 function go(phase: Phase) {
+  if (phase !== "question") stopSpeaking(); // 답변 시작·결과로 넘어가면 읽던 질문을 끊는다 (받아쓰기에 면접관 목소리가 섞이지 않게)
   S.phase = phase;
   S.phaseAt = now();
+  if (phase === "question") {
+    render();
+    return speakCurrent();
+  }
   if (phase === "answer") {
-    const base = { box: S.cam.baseBox!, gazeStd: S.cam.baseGazeStd, targets: S.cam.lookTargets() };
+    const base = { box: S.cam.baseBox!, gazeStd: S.cam.baseGazeStd, targets: S.cam.lookTargets(), side: JUDGES[cur().judge].side };
     const v = S.voice;
     S.coach = new AnswerCoach(base, { noiseRms: v.noiseRms!, noiseDb: v.noiseDb!, voiceDb: v.voiceDb!, pace: paceBase(v.readSyllables, v.readSpeechSec, hangulSyllables(READ_SENTENCE)) }, S.phaseAt, curQ());
     startStt();
@@ -683,6 +719,42 @@ function go(phase: Phase) {
     void preloadEmbedder(); // 결과 화면 사실 대조용 뜻 비교 모델을 면접 중에 미리 받음
   }
   render();
+}
+
+/** 이번 질문을 맡은 면접관이 소리 내어 읽는다. 다 읽은 뒤부터 생각 시간이 흐른다.
+ *  받아쓰기는 답변 때만 켜지므로 면접관 목소리는 받아쓰지 않는다. */
+function speakCurrent() {
+  stopSpeaking();
+  const a = cur();
+  if (!a || !ttsSupported()) return;
+  S.speaking = true;
+  S.phaseAt = now();
+  const h = speak(a.text, a.judge, JUDGES[a.judge].voice);
+  tts = h;
+  refreshSpeaking();
+  void h.done.then((r) => {
+    if (tts !== h) return;
+    tts = null;
+    S.speaking = false;
+    if (r === "error") S.ttsFail = true;
+    if (S.phase !== "question") return;
+    S.phaseAt = now();
+    render();
+  });
+}
+function stopSpeaking() {
+  const h = tts;
+  tts = null;
+  S.speaking = false;
+  h?.cancel();
+}
+/** 말하기 시작·끝: 오버레이 전체를 다시 그리지 않고 글자·버튼·입 움직임만 */
+function refreshSpeaking() {
+  updateJudges();
+  const label = $("#qlabel");
+  if (label && S.phase === "question") label.textContent = S.speaking ? `${subj(cur().judge)} 질문하고 있어요` : "생각하는 시간";
+  const re = $<HTMLButtonElement>("#relisten");
+  if (re) re.disabled = S.speaking;
 }
 
 /** 자소서·공고의 영문 용어 (받아쓰기 힌트 + 받아쓴 뒤 고치기) */
@@ -750,7 +822,7 @@ async function nextFollowup(main: Asked, text: Promise<string>, sttError: string
   if (demo.set && f.reason === "no_text") f.question = EXPECTED_FOLLOWUP; // 시연: 받아쓴 답이 없으면 세트의 예상 꼬리질문
   if (!answer && S.sttMode !== "none") f.error = `답변을 받아쓰지 못했어요${sttError ? ` (${sttError === "network" ? "인터넷 연결 문제" : sttError})` : " (말소리가 안 들렸거나 마이크 문제)"}`;
   saveHistory(S.input.resume, f.question);
-  S.asked.push({ text: f.question, kind: "follow", type: main.type, source: f.source, evidence: main.evidence, reason: f.reason, issues: f.issues, error: f.error, ms: performance.now() - t0 });
+  S.asked.push({ text: f.question, kind: "follow", type: main.type, source: f.source, evidence: main.evidence, reason: f.reason, issues: f.issues, error: f.error, ms: performance.now() - t0, judge: pickJudge(main.judge) });
   if (S.phase === "followup") go("question");
 }
 
@@ -892,7 +964,7 @@ function tickUi() {
     const msg = $("#setup-msg");
     if (msg) msg.textContent = S.cam.active ? SETUP_MESSAGES[S.cam.message] : VOICE_SETUP_MESSAGES[S.voice.message];
     $(".guide")?.classList.toggle("ok", S.cam.message === "position_ok" || (!S.cam.active));
-    $(".qslot")?.classList.toggle("look", S.cam.step === "screen");
+    $(".seat")?.classList.toggle("look", S.cam.step === "screen");
     const voiceStep = !S.cam.active;
     $("#read")?.toggleAttribute("hidden", !(voiceStep && S.voice.step === "voice"));
     const bar = $("#setup-bar");
@@ -901,6 +973,7 @@ function tickUi() {
       bar.querySelector("i")!.style.width = `${S.voice.level * 100}%`;
     }
   }
+  if (S.phase === "question" && S.speaking) S.phaseAt = t; // 질문을 다 들을 때까지 생각 시간은 멈춤
   if (S.phase === "question" || S.phase === "answer") {
     const total = S.phase === "answer" ? ANSWER_SEC : cur()?.kind === "follow" ? FOLLOW_READ_SEC : QUESTION_SEC;
     const left = Math.max(0, total - (t - S.phaseAt));

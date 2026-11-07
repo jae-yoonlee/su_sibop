@@ -80,7 +80,7 @@ a { color: var(--link); }
 
 /* ── 카메라 전체 화면 */
 .stage { position: fixed; inset: 0; background: #2b2c31; overflow: hidden; }
-.stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.stage > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 .overlay { position: absolute; inset: 0; pointer-events: none; }
 .overlay > * { pointer-events: auto; }
 .guide { position: absolute; left: 50%; top: 47%; width: min(30vw, 46vh); aspect-ratio: 3 / 4; transform: translate(-50%, -50%);
@@ -136,6 +136,11 @@ a { color: var(--link); }
 .judge-row { position: absolute; left: 0; right: 0; bottom: 20%; display: flex; justify-content: center; gap: min(3vw, 40px); }
 .judge { width: min(24vw, 44vh); aspect-ratio: 200 / 240; position: relative; transition: transform 0.3s; }
 .judge svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.judge video { display: none; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 20%; border-radius: 18px 18px 0 0; }
+.judge.real svg { display: none; }
+.judge.real .clip-idle { display: block; }
+.judge.real.talk .clip-idle { display: none; }
+.judge.real.talk .clip-talk { display: block; }
 .judge.on { transform: translateY(-1.5%); }
 .desk { position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: linear-gradient(180deg, #d8c9b0 0%, #cdbc9f 100%); border-top: 6px solid #e6dac6; }
 .plates { display: flex; justify-content: center; gap: min(3vw, 40px); margin-top: 14px; }

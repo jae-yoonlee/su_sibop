@@ -61,11 +61,31 @@ function judgeSvg(j: Judge, i: number) {
   </svg>`;
 }
 
+// 실사 영상 (2026-11-07 사용자 요청 "진짜 사람처럼"): public/judges/ 에 면접관마다 대기·말하기 반복 영상을 넣으면 그림 대신 영상을 쓴다.
+// 파일 이름: j1-idle.mp4, j1-talk.mp4 … j3-talk.mp4. 없거나 못 읽으면 그 면접관은 그림으로 보여 준다.
+// 질문은 매번 새로 만들어지므로 입 모양을 문장에 맞추지는 않고, 음성이 나오는 동안 '말하기' 영상을 돌린다.
+const clipUrl = (i: number, kind: "idle" | "talk") => `${import.meta.env.BASE_URL}judges/j${i + 1}-${kind}.mp4`;
+
 /** 면접실 전체 (벽, 면접관 3명, 책상, 이름표). 한 번만 만들고 클래스만 바꾼다 */
 export function judgesHtml() {
+  const clips = (i: number) =>
+    `<video class="clip-idle" data-src="${clipUrl(i, "idle")}" muted loop playsinline preload="auto"></video><video class="clip-talk" data-src="${clipUrl(i, "talk")}" muted loop playsinline preload="auto"></video>`;
   return `<div class="room-wall"></div>
-    <div class="judge-row">${JUDGES.map((j, i) => `<div class="judge" data-j="${i}">${judgeSvg(j, i)}</div>`).join("")}</div>
+    <div class="judge-row">${JUDGES.map((j, i) => `<div class="judge" data-j="${i}">${judgeSvg(j, i)}${clips(i)}</div>`).join("")}</div>
     <div class="desk"><div class="plates">${JUDGES.map((j, i) => `<span class="plate" data-j="${i}">${j.name}</span>`).join("")}</div></div>`;
+}
+
+/** 영상 파일을 불러 본다. 대기·말하기 둘 다 읽히면 그 면접관은 영상으로 (.real) */
+export function loadJudgeClips(root: HTMLElement | null) {
+  root?.querySelectorAll<HTMLElement>(".judge").forEach((el) => {
+    const vids = [...el.querySelectorAll<HTMLVideoElement>("video")];
+    let ok = 0;
+    for (const v of vids) {
+      v.addEventListener("loadeddata", () => ++ok === vids.length && el.classList.add("real"), { once: true });
+      v.addEventListener("error", () => el.classList.remove("real"), { once: true });
+      v.src = v.dataset.src!;
+    }
+  });
 }
 
 /** active: 이번 질문을 맡은 면접관, talking: 지금 말하는 중, still: AI가 꼬리질문을 만드는 동안 움직임 멈춤 (그래픽 칩 양보) */
@@ -76,5 +96,13 @@ export function setJudges(root: HTMLElement | null, s: { active: number | null; 
     const on = Number(el.dataset.j) === s.active;
     el.classList.toggle("on", on);
     el.classList.toggle("talk", on && s.talking);
+    if (!el.classList.contains("real")) return;
+    // 영상: 말하는 동안만 말하기 영상, 꼬리질문을 만드는 동안은 둘 다 멈춤 (영상 풀기도 그래픽 칩을 씀)
+    const talk = on && s.talking;
+    el.querySelectorAll<HTMLVideoElement>("video").forEach((v) => {
+      const want = !s.still && v.classList.contains("clip-talk") === talk;
+      if (want && v.paused) void v.play().catch(() => {});
+      else if (!want && !v.paused) v.pause();
+    });
   });
 }

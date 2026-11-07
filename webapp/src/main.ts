@@ -23,7 +23,7 @@ import { preloadEmbedder } from "./report/embed";
 import { currentModel, followupAsker, jsonAsker, llmState, onLlmState, preloadLlm, type LlmState } from "./prep/llm";
 import { ISSUE_LABELS, loadHistory, makeFollowup, saveHistory, type IssueName } from "./prep/followup";
 import { runPrep, type PrepInput, type PrepState, type StepState } from "./prep/pipeline";
-import { JUDGES, judgesHtml, pickJudge, setJudges, subj } from "./interview/judges";
+import { JUDGES, judgesHtml, loadJudgeClips, pickJudge, setJudges, subj } from "./interview/judges";
 import { speak, ttsSupported, voiceFor, type TtsHandle } from "./media/tts";
 import { demo, demoHtml, demoPick, demoQuestion, EXPECTED_FOLLOWUP } from "./demo"; // 시연 모드 (임시)
 
@@ -142,6 +142,7 @@ function render() {
   if (!$(".stage")) {
     app.innerHTML = `<div class="stage"><div class="room" aria-hidden="true">${judgesHtml()}</div><div class="overlay"></div></div>`;
     if (S.video) $(".room")!.after(S.video);
+    loadJudgeClips($(".room"));
   }
   // 2026-11-07: 내 얼굴은 자리 맞출 때만 전체 화면, 질문부터는 오른쪽 아래 작은 화면. 전체 화면엔 면접관 3명
   $(".stage")!.classList.toggle("interview", interviewing());

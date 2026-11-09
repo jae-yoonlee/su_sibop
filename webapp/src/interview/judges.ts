@@ -5,14 +5,14 @@
 export interface Judge {
   name: string;
   side: -1 | 0 | 1; // 화면에서 앉은 쪽 (왼쪽 −1, 가운데 0, 오른쪽 1). 시선 판정에 씀
-  voice: { pitch: number; rate: number }; // 같은 목소리라도 높낮이·빠르기로 구분
+  voice: { pitch: number; rate: number }; // 같은 목소리라도 높낮이·빠르기로 구분. 영상 인물에 맞춤: 1 젊은 남자, 2 여자, 3 안경 쓴 중년 남자
   look: { skin: string; hair: string; suit: string; shirt: string; tie?: string; glasses?: boolean; hairStyle: "short" | "bob" | "side" };
 }
 
 export const JUDGES: Judge[] = [
-  { name: "면접관 1", side: -1, voice: { pitch: 0.8, rate: 0.95 }, look: { skin: "#efc6a4", hair: "#3a2f2a", suit: "#46516d", shirt: "#ffffff", tie: "#3457f0", hairStyle: "short" } },
+  { name: "면접관 1", side: -1, voice: { pitch: 0.85, rate: 1.05 }, look: { skin: "#efc6a4", hair: "#3a2f2a", suit: "#46516d", shirt: "#ffffff", tie: "#3457f0", hairStyle: "short" } },
   { name: "면접관 2", side: 0, voice: { pitch: 1.1, rate: 1.0 }, look: { skin: "#e8b893", hair: "#2b2321", suit: "#8c735f", shirt: "#f4efe6", glasses: true, hairStyle: "bob" } },
-  { name: "면접관 3", side: 1, voice: { pitch: 0.95, rate: 1.05 }, look: { skin: "#f2cfb4", hair: "#5a4636", suit: "#2f5d50", shirt: "#ffffff", hairStyle: "side" } },
+  { name: "면접관 3", side: 1, voice: { pitch: 0.75, rate: 0.95 }, look: { skin: "#f2cfb4", hair: "#5a4636", suit: "#2f5d50", shirt: "#ffffff", hairStyle: "side" } },
 ];
 
 /** 질문마다 면접관을 무작위로 고른다. 같은 사람이 연달아 묻지 않게 바로 앞 사람은 뺀다 */
@@ -72,16 +72,17 @@ export function judgesHtml() {
     `<video class="clip-idle" data-src="${clipUrl(i, "idle")}" muted loop playsinline preload="auto"></video><video class="clip-talk" data-src="${clipUrl(i, "talk")}" muted loop playsinline preload="auto"></video>`;
   return `<div class="room-wall"></div>
     <div class="judge-row">${JUDGES.map((j, i) => `<div class="judge" data-j="${i}">${judgeSvg(j, i)}${clips(i)}</div>`).join("")}</div>
-    <div class="desk"><div class="plates">${JUDGES.map((j, i) => `<span class="plate" data-j="${i}">${j.name}</span>`).join("")}</div></div>`;
+    <div class="desk"><div class="plates">${JUDGES.map((j, i) => `<span class="plate" data-j="${i}"><b>${j.name}</b></span>`).join("")}</div></div>`;
 }
 
 /** 영상 파일을 불러 본다. 대기·말하기 둘 다 읽히면 그 면접관은 영상으로 (.real) */
 export function loadJudgeClips(root: HTMLElement | null) {
-  root?.querySelectorAll<HTMLElement>(".judge").forEach((el) => {
+  if (!root) return;
+  root.querySelectorAll<HTMLElement>(".judge").forEach((el) => {
     const vids = [...el.querySelectorAll<HTMLVideoElement>("video")];
     let ok = 0;
     for (const v of vids) {
-      v.addEventListener("loadeddata", () => ++ok === vids.length && el.classList.add("real"), { once: true });
+      v.addEventListener("loadeddata", () => ++ok === vids.length && (el.classList.add("real"), root.classList.add("real")), { once: true });
       v.addEventListener("error", () => el.classList.remove("real"), { once: true });
       v.src = v.dataset.src!;
     }

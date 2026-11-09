@@ -146,6 +146,7 @@ function render() {
   }
   // 2026-11-07: 내 얼굴은 자리 맞출 때만 전체 화면, 질문부터는 오른쪽 아래 작은 화면. 전체 화면엔 면접관 3명
   $(".stage")!.classList.toggle("interview", interviewing());
+  $(".stage")!.classList.toggle("subs", interviewing() && showSubs()); // 자막이 길면 이름표를 가려서, 자막을 켜면 이름표를 숨김
   updateJudges();
   $(".overlay")!.innerHTML = overlayHtml();
   bindOverlay();
@@ -256,7 +257,7 @@ function overlayHtml() {
     }).join("");
     return `
       <div class="guide"></div>
-      <div class="seat">가운데 면접관 자리</div>
+      <div class="seat" aria-hidden="true"></div>
       <div class="setup-card">
         <div class="dots">${dots}</div>
         <div class="msg" id="setup-msg"></div>
